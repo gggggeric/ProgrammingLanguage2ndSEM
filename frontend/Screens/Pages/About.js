@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView } from 'react-native';
-import Navbar from './Navigation/Navbar'; // Import Navbar
+import Navbar from './Navigation/BottomNavbar'; // Import Navbar
 
 export default function About() {
   return (
