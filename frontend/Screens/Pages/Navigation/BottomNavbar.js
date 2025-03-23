@@ -1,15 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 
-export default function BottomNavbar() {
+export default function BottomNavbar({ cartItemCount }) {
   const navigation = useNavigation();
-  const [userType, setUserType] = useState('user'); // Default to 'user'
+  const [userType, setUserType] = React.useState('user'); // Default to 'user'
 
   // Fetch userType from SecureStore when the component mounts
-  useEffect(() => {
+  React.useEffect(() => {
     const fetchUserType = async () => {
       const storedUserType = await SecureStore.getItemAsync('userType');
       if (storedUserType) {
@@ -57,7 +57,14 @@ export default function BottomNavbar() {
 
           {/* Cart Tab */}
           <TouchableOpacity style={styles.tab} onPress={() => handleNavigation('Cart')}>
-            <Ionicons name="cart" size={24} color="#ff8c42" />
+            <View>
+              <Ionicons name="cart" size={24} color="#ff8c42" />
+              {cartItemCount > 0 && (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{cartItemCount}</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.tabText}>Cart</Text>
           </TouchableOpacity>
 
@@ -94,5 +101,21 @@ const styles = StyleSheet.create({
     color: '#fff', // White text
     fontSize: 12,
     marginTop: 5,
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#ff5e62',
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cartBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });

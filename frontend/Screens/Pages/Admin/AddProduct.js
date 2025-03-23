@@ -76,7 +76,7 @@ const AddProduct = () => {
         });
 
         try {
-            const response = await axios.post(`${API_BASE_URL}/products/create`, formData, {
+            const response = await axios.post(`${API_BASE_URL}/admin/products/create`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },

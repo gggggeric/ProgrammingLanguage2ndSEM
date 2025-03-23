@@ -9,7 +9,7 @@ import About from './Screens/Pages/About';
 import AdminDashboard from './Screens/Pages/Admin/AdminDashboard';
 import AddProduct from './Screens/Pages/Admin/AddProduct';
 import Profile from './Screens/Pages/UserInformation/Profile';
-
+import CartScreen from './Screens/Pages/Cart/Cart';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -59,7 +59,11 @@ export default function App() {
           component={AddProduct} 
           options={{ title: 'Add Product' }} // Show header with title
         />
-    
+         <Stack.Screen 
+          name="Cart" 
+          component={CartScreen} 
+          options={{ headerShown: false }} // Hide header for Register
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
