@@ -1,25 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
   StatusBar,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
-  Alert
+  Alert,
 } from 'react-native';
 import { Button, Title } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+import BottomNavbar from '../Navigation/BottomNavbar';
 
 export default function CartScreen({ navigation }) {
-  const [cartItems, setCartItems] = useState([]); // State to store cart items
-  const [userId, setUserId] = useState(null); // State to store the logged-in user's ID
+  const [cartItems, setCartItems] = useState([]);
+  const [userId, setUserId] = useState(null);
+  const [cartItemCount, setCartItemCount] = useState(0);
 
   // Fetch user ID and cart items from SecureStore when the component mounts
   useEffect(() => {
@@ -27,64 +29,79 @@ export default function CartScreen({ navigation }) {
       try {
         const storedUserId = await SecureStore.getItemAsync('userId');
         if (storedUserId) {
-          setUserId(storedUserId); // Set the user ID
-          const cartKey = `cart_${storedUserId}`; // Unique key for the user's cart
+          setUserId(storedUserId);
+          const cartKey = `cart_${storedUserId}`;
           const storedCartItems = await SecureStore.getItemAsync(cartKey);
           if (storedCartItems) {
-            setCartItems(JSON.parse(storedCartItems)); // Set the cart items
+            const parsedCartItems = JSON.parse(storedCartItems);
+            setCartItems(parsedCartItems);
+            setCartItemCount(parsedCartItems.reduce((sum, item) => sum + item.quantity, 0)); // Update total item count
           }
         }
       } catch (error) {
         console.error('Error fetching user ID or cart items:', error);
       }
     };
-    fetchUserAndCart();
-  }, []);
 
-  // Update cart items in SecureStore whenever they change
-  useEffect(() => {
-    const updateStoredCart = async () => {
-      if (userId) {
-        const cartKey = `cart_${userId}`; // Unique key for the user's cart
-        try {
-          await SecureStore.setItemAsync(cartKey, JSON.stringify(cartItems));
-        } catch (error) {
-          console.error('Error updating stored cart items:', error);
-        }
-      }
-    };
-    
-    if (cartItems.length > 0) {
-      updateStoredCart();
-    }
-  }, [cartItems, userId]);
+    // Set up a focus listener to refresh cart data when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchUserAndCart();
+    });
+
+    // Initial fetch
+    fetchUserAndCart();
+
+    // Clean up the listener when component unmounts
+    return unsubscribe;
+  }, [navigation]);
 
   // Function to update item quantity
   const updateQuantity = (id, change) => {
-    setCartItems(prevItems => 
-      prevItems.map(item => {
-        if (item.id === id) {
-          const newQuantity = Math.max(1, item.quantity + change); // Ensure quantity doesn't go below 1
-          return { ...item, quantity: newQuantity };
-        }
-        return item;
-      })
-    );
+    const updatedCartItems = cartItems.map((item) => {
+      if (item._id === id) {
+        const newQuantity = Math.max(1, item.quantity + change);
+        return { ...item, quantity: newQuantity };
+      }
+      return item;
+    });
+    setCartItems(updatedCartItems);
+    const totalItems = updatedCartItems.reduce((sum, item) => sum + item.quantity, 0);
+    setCartItemCount(totalItems); // Update total item count
+    updateSecureStore(updatedCartItems);
   };
 
   // Function to remove item from cart
-  const removeItem = (id) => {
-    setCartItems(prevItems => prevItems.filter(item => item.id !== id));
+  const removeItem = async (id) => {
+    const updatedCartItems = cartItems.filter((item) => item._id !== id);
+    setCartItems(updatedCartItems);
+    const totalItems = updatedCartItems.reduce((sum, item) => sum + item.quantity, 0);
+    setCartItemCount(totalItems); // Update total item count
+    await updateSecureStore(updatedCartItems); // Update SecureStore
     Alert.alert('Item Removed', 'The item has been removed from your cart.');
+  };
+
+  // Function to update SecureStore with the latest cart items
+  const updateSecureStore = async (updatedCartItems) => {
+    if (userId) {
+      const cartKey = `cart_${userId}`;
+      try {
+        await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCartItems)); // Save updated cart
+        await SecureStore.setItemAsync('cartItemCount', String(updatedCartItems.reduce((sum, item) => sum + item.quantity, 0))); // Update global cart count
+      } catch (error) {
+        console.error('Error updating SecureStore:', error);
+      }
+    }
   };
 
   // Function to handle checkout
   const handleCheckout = async () => {
     if (userId) {
       try {
-        const cartKey = `cart_${userId}`; // Unique key for the user's cart
-        await SecureStore.deleteItemAsync(cartKey); // Clear the cart
-        setCartItems([]); // Reset cart items in state
+        const cartKey = `cart_${userId}`;
+        await SecureStore.deleteItemAsync(cartKey);
+        setCartItems([]);
+        setCartItemCount(0);
+        await SecureStore.setItemAsync('cartItemCount', '0');
         Alert.alert('Success', 'Your order has been placed successfully!');
       } catch (error) {
         console.error('Error during checkout:', error);
@@ -93,8 +110,8 @@ export default function CartScreen({ navigation }) {
     }
   };
 
-  // Calculate total (quantity * price for all items)
-  const total = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  // Calculate total
+  const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
     <View style={styles.container}>
@@ -109,14 +126,14 @@ export default function CartScreen({ navigation }) {
           style={styles.gradient}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardAvoidContainer}
           >
-            <ScrollView 
+            <ScrollView
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
             >
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.backButton}
                 onPress={() => navigation.goBack()}
               >
@@ -136,39 +153,37 @@ export default function CartScreen({ navigation }) {
               {cartItems.length > 0 ? (
                 <View style={styles.cartItemsContainer}>
                   {cartItems.map((item) => (
-                    <View key={item.id} style={styles.cartItem}>
-                      <Image source={{ uri: item.image }} style={styles.itemImage} />
-                      
+                    <View key={item._id} style={styles.cartItem}>
+                      {/* Display the product image */}
+                      <Image
+                        source={{ uri: item.photo || 'https://via.placeholder.com/150' }} // Fallback image if photo is missing
+                        style={styles.itemImage}
+                      />
                       <View style={styles.itemDetails}>
                         <View style={styles.itemHeader}>
                           <Text style={styles.itemName}>{item.name}</Text>
                           <Text style={styles.itemTotalPrice}>${(item.price * item.quantity).toFixed(2)}</Text>
                         </View>
-                        
                         <Text style={styles.itemPrice}>${item.price.toFixed(2)} each</Text>
-                        
                         <View style={styles.itemActions}>
                           <View style={styles.quantityControl}>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               style={styles.quantityButton}
-                              onPress={() => updateQuantity(item.id, -1)}
+                              onPress={() => updateQuantity(item._id, -1)}
                             >
                               <Ionicons name="remove" size={16} color="#fff" />
                             </TouchableOpacity>
-                            
                             <Text style={styles.quantityText}>{item.quantity}</Text>
-                            
-                            <TouchableOpacity 
+                            <TouchableOpacity
                               style={styles.quantityButton}
-                              onPress={() => updateQuantity(item.id, 1)}
+                              onPress={() => updateQuantity(item._id, 1)}
                             >
                               <Ionicons name="add" size={16} color="#fff" />
                             </TouchableOpacity>
                           </View>
-                          
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.removeButton}
-                            onPress={() => removeItem(item.id)}
+                            onPress={() => removeItem(item._id)}
                           >
                             <Ionicons name="trash-outline" size={16} color="#ff5e62" />
                             <Text style={styles.removeText}>Remove</Text>
@@ -183,7 +198,7 @@ export default function CartScreen({ navigation }) {
                   <Ionicons name="cart-outline" size={64} color="#ff8c42" />
                   <Text style={styles.emptyCartTitle}>Your cart is empty</Text>
                   <Text style={styles.emptyCartSubtitle}>Looks like you haven't added any items yet.</Text>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.browseButton}
                     onPress={() => navigation.navigate('Foods')}
                   >
@@ -201,7 +216,6 @@ export default function CartScreen({ navigation }) {
                       <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
                     </View>
                   </View>
-                  
                   <Button
                     mode="contained"
                     onPress={handleCheckout}
@@ -217,6 +231,9 @@ export default function CartScreen({ navigation }) {
           </KeyboardAvoidingView>
         </LinearGradient>
       </ImageBackground>
+
+      {/* Add the BottomNavbar with the cartItemCount prop */}
+      <BottomNavbar cartItemCount={cartItemCount} />
     </View>
   );
 }

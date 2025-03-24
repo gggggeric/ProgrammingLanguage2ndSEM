@@ -13,6 +13,7 @@ const AddProduct = () => {
         category: 'vegetarian',
         crust: 'thin',
         size: 'solo',
+        quantity: '', // Add quantity field
     });
     const [photo, setPhoto] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -69,6 +70,7 @@ const AddProduct = () => {
         formData.append('category', productData.category);
         formData.append('crust', productData.crust);
         formData.append('size', productData.size);
+        formData.append('quantity', productData.quantity); // Add quantity to FormData
         formData.append('photo', {
             uri: photo.uri,
             name: 'photo.jpg',
@@ -132,6 +134,13 @@ const AddProduct = () => {
                 placeholder="Size (solo/party/family)"
                 value={productData.size}
                 onChangeText={(text) => handleInputChange('size', text)}
+            />
+            <TextInput
+                style={styles.input}
+                placeholder="Quantity"
+                value={productData.quantity}
+                onChangeText={(text) => handleInputChange('quantity', text)}
+                keyboardType="numeric"
             />
             <Button title="Select Photo" onPress={handleImagePicker} />
             {photo && <Image source={{ uri: photo.uri }} style={styles.imagePreview} />}

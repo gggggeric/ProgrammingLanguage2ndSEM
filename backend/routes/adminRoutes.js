@@ -14,9 +14,8 @@ cloudinary.config({
 
 // Set up multer for file upload
 const upload = multer({ dest: 'uploads/' });
-
 router.post('/create', upload.single('photo'), async (req, res) => {
-    const { userId, name, description, price, category, crust, size } = req.body;
+    const { userId, name, description, price, category, crust, size, quantity } = req.body;
 
     // Validate userId
     if (!mongoose.Types.ObjectId.isValid(userId)) {
@@ -26,6 +25,11 @@ router.post('/create', upload.single('photo'), async (req, res) => {
     // Check if a file was uploaded
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    // Validate quantity (optional, but recommended)
+    if (quantity === undefined || quantity < 0) {
+        return res.status(400).json({ message: 'Invalid quantity' });
     }
 
     try {
@@ -44,6 +48,7 @@ router.post('/create', upload.single('photo'), async (req, res) => {
             crust,
             size,
             photo: result.secure_url, // Cloudinary URL
+            quantity, // Add the quantity field
         });
 
         // Save the product to the database

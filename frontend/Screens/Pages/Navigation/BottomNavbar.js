@@ -1,23 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 
-export default function BottomNavbar({ cartItemCount }) {
+export default function BottomNavbar({ cartItemCount: propCartItemCount }) {
   const navigation = useNavigation();
-  const [userType, setUserType] = React.useState('user'); // Default to 'user'
+  const [userType, setUserType] = useState('user'); // Default to 'user'
+  const [cartItemCount, setCartItemCount] = useState(propCartItemCount || 0);
 
   // Fetch userType from SecureStore when the component mounts
-  React.useEffect(() => {
-    const fetchUserType = async () => {
-      const storedUserType = await SecureStore.getItemAsync('userType');
-      if (storedUserType) {
-        setUserType(storedUserType);
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        // Get userType
+        const storedUserType = await SecureStore.getItemAsync('userType');
+        if (storedUserType) {
+          setUserType(storedUserType);
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
       }
     };
-    fetchUserType();
+
+    fetchUserData();
   }, []);
+
+  // Update cart count when prop changes
+  useEffect(() => {
+    setCartItemCount(propCartItemCount || 0);
+  }, [propCartItemCount]);
 
   // Function to navigate
   const handleNavigation = (screen) => {

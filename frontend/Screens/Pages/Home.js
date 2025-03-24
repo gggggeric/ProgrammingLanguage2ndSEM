@@ -47,8 +47,9 @@ export default function HomeScreen() {
         const cartKey = `cart_${userId}`; // Unique key for the user's cart
         const storedCartItems = await SecureStore.getItemAsync(cartKey);
         if (storedCartItems) {
-          setCartItems(JSON.parse(storedCartItems));
-          setCartItemCount(JSON.parse(storedCartItems).length); // Update cart item count
+          const parsedCartItems = JSON.parse(storedCartItems);
+          setCartItems(parsedCartItems);
+          setCartItemCount(parsedCartItems.reduce((sum, item) => sum + item.quantity, 0)); // Update cart item count
         }
       }
     };
@@ -86,11 +87,24 @@ export default function HomeScreen() {
   const addToCart = async (product) => {
     const userId = await SecureStore.getItemAsync('userId');
     if (userId) {
-      const cartKey = `cart_${userId}`; // Unique key for the user's cart
-      const updatedCartItems = [...cartItems, product]; // Add the new product to the cart
+      const cartKey = `cart_${userId}`;
+      const existingItemIndex = cartItems.findIndex((item) => item._id === product._id); // Compare _id as a string
+
+      let updatedCartItems;
+      if (existingItemIndex !== -1) {
+        // Item already exists, increment quantity
+        updatedCartItems = [...cartItems];
+        updatedCartItems[existingItemIndex].quantity += 1;
+      } else {
+        // Item does not exist, add new item with quantity 1
+        updatedCartItems = [...cartItems, { ...product, quantity: 1 }]; // Ensure product includes photo
+      }
+
       setCartItems(updatedCartItems);
-      setCartItemCount(updatedCartItems.length); // Update cart item count
+      const totalItems = updatedCartItems.reduce((sum, item) => sum + item.quantity, 0);
+      setCartItemCount(totalItems); // Update total item count
       await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCartItems)); // Save to SecureStore
+      await SecureStore.setItemAsync('cartItemCount', String(totalItems)); // Update global cart count
     }
   };
 
@@ -119,18 +133,18 @@ export default function HomeScreen() {
 
     // Full stars
     for (let i = 0; i < fullStars; i++) {
-      stars.push(<Ionicons key={`full-${i}`} name="star" size={12} color="#FFD700" />);
+      stars.push(<Ionicons key={`${rating}-full-${i}`} name="star" size={12} color="#FFD700" />);
     }
 
     // Half star if needed
     if (hasHalfStar) {
-      stars.push(<Ionicons key="half" name="star-half" size={12} color="#FFD700" />);
+      stars.push(<Ionicons key={`${rating}-half`} name="star-half" size={12} color="#FFD700" />);
     }
 
     // Empty stars to make total of 5
     const emptyStars = 5 - stars.length;
     for (let i = 0; i < emptyStars; i++) {
-      stars.push(<Ionicons key={`empty-${i}`} name="star-outline" size={12} color="#FFD700" />);
+      stars.push(<Ionicons key={`${rating}-empty-${i}`} name="star-outline" size={12} color="#FFD700" />);
     }
 
     return (
@@ -148,13 +162,6 @@ export default function HomeScreen() {
     { id: 3, name: 'Fashion', icon: 'shirt' },
     { id: 4, name: 'Sports', icon: 'football' },
     { id: 5, name: 'Beauty', icon: 'color-palette' },
-  ];
-
-  // Recently viewed items
-  const recentlyViewed = [
-    { id: 1, name: 'Bluetooth Speaker', price: '$45.99', image: 'https://via.placeholder.com/150' },
-    { id: 2, name: 'Coffee Mug', price: '$12.99', image: 'https://via.placeholder.com/150' },
-    { id: 3, name: 'Desk Organizer', price: '$19.99', image: 'https://via.placeholder.com/150' },
   ];
 
   return (
@@ -245,7 +252,7 @@ export default function HomeScreen() {
                 contentContainerStyle={styles.categoriesContainer}
               >
                 {categories.map((category) => (
-                  <TouchableOpacity key={category.id} style={styles.categoryItem}>
+                  <TouchableOpacity key={`category-${category.id}`} style={styles.categoryItem}>
                     <View style={styles.categoryIconContainer}>
                       <Ionicons name={category.icon} size={24} color="#ff8c42" />
                     </View>
@@ -264,64 +271,46 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
               <View style={styles.productGrid}>
-                {products.map((product) => (
-                  <TouchableOpacity
-                    key={product._id}
-                    style={styles.productCard}
-                    onPress={() => handleProductClick(product)}
-                  >
-                    <View style={styles.productImageContainer}>
-                      <Image
-                        source={{ uri: product.photo || 'https://via.placeholder.com/150' }}
-                        style={styles.productImage}
-                      />
-                      {product.badge && (
-                        <View style={styles.badgeContainer}>
-                          <Text style={styles.badgeText}>{product.badge}</Text>
-                        </View>
-                      )}
-                      <TouchableOpacity style={styles.favoriteButton}>
-                        <Ionicons name="heart-outline" size={20} color="#fff" />
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.productInfo}>
-                      <Text style={styles.productName} numberOfLines={1}>{product.name}</Text>
-                      <Text style={styles.productPrice}>${product.price}</Text>
-                      {product.rating && renderStars(product.rating)}
-                    </View>
-                    <TouchableOpacity style={styles.addToCartButton} onPress={() => addToCart(product)}>
-                      <Ionicons name="cart" size={16} color="#fff" />
-                      <Text style={styles.addToCartText}>Add</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+                {products.map((product) => {
+                  // Debugging: Log the product ID and its type
+                  console.log('Product ID:', product._id, 'Type:', typeof product._id);
 
-            {/* Recently Viewed */}
-            <View style={styles.recentlyViewedSection}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Recently Viewed</Text>
-                <TouchableOpacity>
-                  <Text style={styles.seeAllText}>See All</Text>
-                </TouchableOpacity>
+                  // Ensure the key is unique and valid
+                  const productKey = product._id ? `product-${product._id}` : `product-${Math.random()}`;
+
+                  return (
+                    <TouchableOpacity
+                      key={productKey} // Use a unique key
+                      style={styles.productCard}
+                      onPress={() => handleProductClick(product)}
+                    >
+                      <View style={styles.productImageContainer}>
+                        <Image
+                          source={{ uri: product.photo || 'https://via.placeholder.com/150' }}
+                          style={styles.productImage}
+                        />
+                        {product.badge && (
+                          <View style={styles.badgeContainer}>
+                            <Text style={styles.badgeText}>{product.badge}</Text>
+                          </View>
+                        )}
+                        <TouchableOpacity style={styles.favoriteButton}>
+                          <Ionicons name="heart-outline" size={20} color="#fff" />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.productInfo}>
+                        <Text style={styles.productName} numberOfLines={1}>{product.name}</Text>
+                        <Text style={styles.productPrice}>${product.price}</Text>
+                        {product.rating && renderStars(product.rating)}
+                      </View>
+                      <TouchableOpacity style={styles.addToCartButton} onPress={() => addToCart(product)}>
+                        <Ionicons name="cart" size={16} color="#fff" />
+                        <Text style={styles.addToCartText}>Add</Text>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.recentItemsContainer}
-              >
-                {recentlyViewed.map((item) => (
-                  <TouchableOpacity key={item.id} style={styles.recentItem}>
-                    <Image
-                      source={{ uri: item.image }}
-                      style={styles.recentItemImage}
-                    />
-                    <Text style={styles.recentItemName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.recentItemPrice}>{item.price}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
             </View>
           </ScrollView>
         </LinearGradient>
@@ -351,6 +340,7 @@ export default function HomeScreen() {
                 <Text style={styles.modalProductCategory}>Category: {selectedProduct.category}</Text>
                 <Text style={styles.modalProductCrust}>Crust: {selectedProduct.crust}</Text>
                 <Text style={styles.modalProductSize}>Size: {selectedProduct.size}</Text>
+                <Text style={styles.modalProductQuantity}>Quantity: {selectedProduct.quantity}</Text>
                 <Text style={styles.modalProductCreatedAt}>
                   Created At: {new Date(selectedProduct.createdAt).toLocaleDateString()}
                 </Text>
@@ -662,38 +652,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 5,
   },
-  recentlyViewedSection: {
-    marginBottom: 20,
-  },
-  recentItemsContainer: {
-    paddingRight: 20,
-  },
-  recentItem: {
-    width: 120,
-    marginRight: 15,
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  recentItemImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  recentItemName: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  recentItemPrice: {
-    fontSize: 12,
-    color: '#ff8c42',
-    fontWeight: 'bold',
-  },
   // Modal Styles
   modalContainer: {
     flex: 1,
@@ -740,6 +698,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   modalProductSize: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 10,
+  },
+  modalProductQuantity: {
     fontSize: 16,
     color: '#333',
     marginBottom: 10,

@@ -40,6 +40,12 @@ const ProductSchema = new mongoose.Schema({
     type: String, // Store the URL or file path of the product photo
     required: true, // Make it required if every product must have a photo
   },
+  quantity: {
+    type: Number,
+    required: true,
+    default: 0, // Default quantity is 0
+    min: 0, // Ensure the quantity is not negative
+  },
   createdAt: {
     type: Date,
     default: Date.now, // Automatically set the creation date
