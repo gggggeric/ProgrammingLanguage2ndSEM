@@ -10,6 +10,7 @@ import AdminDashboard from './Screens/Pages/Admin/AdminDashboard';
 import AddProduct from './Screens/Pages/Admin/AddProduct';
 import Profile from './Screens/Pages/UserInformation/Profile';
 import CartScreen from './Screens/Pages/Cart/Cart';
+import SearchScreen from './Screens/Pages/Search';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -20,6 +21,11 @@ export default function App() {
         <Stack.Screen 
           name="Landing" 
           component={Landing} 
+          options={{ headerShown: false }} // Hide header for Landing
+        />
+         <Stack.Screen 
+          name="Search" 
+          component={SearchScreen} 
           options={{ headerShown: false }} // Hide header for Landing
         />
         <Stack.Screen 

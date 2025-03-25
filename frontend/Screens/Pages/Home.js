@@ -10,23 +10,44 @@ import {
   StatusBar,
   RefreshControl,
   Modal,
+  TextInput,
+  FlatList,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import Navbar from './Navigation/BottomNavbar';
 import API_BASE_URL from '../../config';
+import { useNavigation } from '@react-navigation/native';
 
 export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
-  const [user, setUser] = useState(null); // State to store logged-in user data
-  const [products, setProducts] = useState([]); // State to store fetched products
-  const [selectedProduct, setSelectedProduct] = useState(null); // State to store the selected product for details
-  const [modalVisible, setModalVisible] = useState(false); // State to control modal visibility
-  const [cartItems, setCartItems] = useState([]); // State to store cart items
-  const [cartItemCount, setCartItemCount] = useState(0); // State to store cart item count
+  const [user, setUser] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [cartItems, setCartItems] = useState([]);
+  const [cartItemCount, setCartItemCount] = useState(0);
+  const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [minPrice, setMinPrice] = useState(0);
+  const [maxPrice, setMaxPrice] = useState(1000);
+  const [showPriceFilter, setShowPriceFilter] = useState(false);
+  const navigation = useNavigation();
 
-  // Fetch logged-in user data and cart items on component mount
+  // Get max price from products
+  useEffect(() => {
+    if (products.length > 0) {
+      const prices = products.map(p => p.price);
+      const calculatedMax = Math.max(...prices);
+      setMaxPrice(calculatedMax > 1000 ? calculatedMax : 1000);
+    }
+  }, [products]);
+
+  // Fetch user data and recent searches
   useEffect(() => {
     const fetchUserProfileAndCart = async () => {
       const userId = await SecureStore.getItemAsync('userId');
@@ -35,21 +56,22 @@ export default function HomeScreen() {
           const response = await fetch(`${API_BASE_URL}/user/profile/${userId}`);
           const result = await response.json();
           if (response.ok) {
-            setUser(result.user); // Set the user data
-          } else {
-            console.error('Failed to fetch user profile:', result.message);
+            setUser(result.user);
+            const searches = await SecureStore.getItemAsync(`recentSearches_${userId}`);
+            if (searches) {
+              setRecentSearches(JSON.parse(searches));
+            }
           }
         } catch (error) {
-          console.error('Error fetching user profile:', error);
+          console.error('Error:', error);
         }
 
-        // Fetch cart items from SecureStore
-        const cartKey = `cart_${userId}`; // Unique key for the user's cart
+        const cartKey = `cart_${userId}`;
         const storedCartItems = await SecureStore.getItemAsync(cartKey);
         if (storedCartItems) {
           const parsedCartItems = JSON.parse(storedCartItems);
           setCartItems(parsedCartItems);
-          setCartItemCount(parsedCartItems.reduce((sum, item) => sum + item.quantity, 0)); // Update cart item count
+          setCartItemCount(parsedCartItems.reduce((sum, item) => sum + item.quantity, 0));
         }
       }
     };
@@ -57,91 +79,109 @@ export default function HomeScreen() {
     fetchUserProfileAndCart();
   }, []);
 
-  // Fetch products from the backend
+  // Fetch products
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  // Filter products based on search, description and price range
+  useEffect(() => {
+    if (searchQuery) {
+      const results = products.filter(product => {
+        const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            product.description.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesPrice = product.price >= minPrice && product.price <= maxPrice;
+        return matchesSearch && matchesPrice;
+      });
+      setFilteredProducts(results);
+    } else {
+      setFilteredProducts([]);
+    }
+  }, [searchQuery, products, minPrice, maxPrice]);
 
   const fetchProducts = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/products/products`);
       const result = await response.json();
-      console.log(result); // Log the response to verify the data
       if (response.ok) {
-        setProducts(result.products); // Set the fetched products
-      } else {
-        console.error('Failed to fetch products:', result.message);
+        setProducts(result.products);
       }
     } catch (error) {
-      console.error('Error fetching products:', error);
+      console.error('Error:', error);
     }
   };
 
-  // Refresh function to re-fetch products
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
     fetchProducts().finally(() => setRefreshing(false));
   }, []);
 
-  // Function to add product to cart
   const addToCart = async (product) => {
     const userId = await SecureStore.getItemAsync('userId');
     if (userId) {
       const cartKey = `cart_${userId}`;
-      const existingItemIndex = cartItems.findIndex((item) => item._id === product._id); // Compare _id as a string
+      const existingItemIndex = cartItems.findIndex((item) => item._id === product._id);
 
       let updatedCartItems;
       if (existingItemIndex !== -1) {
-        // Item already exists, increment quantity
         updatedCartItems = [...cartItems];
         updatedCartItems[existingItemIndex].quantity += 1;
       } else {
-        // Item does not exist, add new item with quantity 1
-        updatedCartItems = [...cartItems, { ...product, quantity: 1 }]; // Ensure product includes photo
+        updatedCartItems = [...cartItems, { ...product, quantity: 1 }];
       }
 
       setCartItems(updatedCartItems);
       const totalItems = updatedCartItems.reduce((sum, item) => sum + item.quantity, 0);
-      setCartItemCount(totalItems); // Update total item count
-      await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCartItems)); // Save to SecureStore
-      await SecureStore.setItemAsync('cartItemCount', String(totalItems)); // Update global cart count
+      setCartItemCount(totalItems);
+      await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCartItems));
+      await SecureStore.setItemAsync('cartItemCount', String(totalItems));
     }
   };
 
-  // Function to handle product click
   const handleProductClick = (product) => {
-    setSelectedProduct(product); // Set the selected product
-    setModalVisible(true); // Show the modal
+    setSelectedProduct(product);
+    setModalVisible(true);
   };
 
-  // Function to handle checkout
-  const handleCheckout = async () => {
-    const userId = await SecureStore.getItemAsync('userId');
-    if (userId) {
-      const cartKey = `cart_${userId}`; // Unique key for the user's cart
-      await SecureStore.deleteItemAsync(cartKey); // Clear the cart
-      setCartItems([]);
-      setCartItemCount(0); // Reset cart item count
+  const handleSearch = async () => {
+    if (searchQuery.trim() && user?._id) {
+      const userId = user._id;
+      const searchKey = `recentSearches_${userId}`;
+      const updatedSearches = [
+        `${searchQuery} ($${minPrice}-$${maxPrice})`,
+        ...recentSearches.filter(item => !item.startsWith(searchQuery)).slice(0, 4)
+      ];
+      setRecentSearches(updatedSearches);
+      await SecureStore.setItemAsync(searchKey, JSON.stringify(updatedSearches));
+      
+      navigation.navigate('SearchResults', { 
+        query: searchQuery,
+        minPrice,
+        maxPrice
+      });
+      setSearchModalVisible(false);
+      setSearchQuery('');
     }
   };
 
-  // Render stars for product ratings
+  const handleRecentSearchPress = (searchTerm) => {
+    const term = searchTerm.split(' (')[0];
+    setSearchQuery(term);
+  };
+
   const renderStars = (rating) => {
     const stars = [];
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 !== 0;
 
-    // Full stars
     for (let i = 0; i < fullStars; i++) {
       stars.push(<Ionicons key={`${rating}-full-${i}`} name="star" size={12} color="#FFD700" />);
     }
 
-    // Half star if needed
     if (hasHalfStar) {
       stars.push(<Ionicons key={`${rating}-half`} name="star-half" size={12} color="#FFD700" />);
     }
 
-    // Empty stars to make total of 5
     const emptyStars = 5 - stars.length;
     for (let i = 0; i < emptyStars; i++) {
       stars.push(<Ionicons key={`${rating}-empty-${i}`} name="star-outline" size={12} color="#FFD700" />);
@@ -155,7 +195,25 @@ export default function HomeScreen() {
     );
   };
 
-  // Categories
+  const PriceRangeSlider = () => (
+    <View style={styles.priceRangeContainer}>
+      <View style={styles.priceRangeLabels}>
+        <Text style={styles.priceRangeLabel}>${minPrice}</Text>
+        <Text style={styles.priceRangeLabel}>${maxPrice}</Text>
+      </View>
+      <Slider
+        style={styles.priceSlider}
+        minimumValue={0}
+        maximumValue={maxPrice > 1000 ? maxPrice : 1000}
+        minimumTrackTintColor="#ff8c42"
+        maximumTrackTintColor="#555"
+        thumbTintColor="#ff8c42"
+        value={maxPrice}
+        onValueChange={(value) => setMaxPrice(Math.floor(value))}
+      />
+    </View>
+  );
+
   const categories = [
     { id: 1, name: 'Electronics', icon: 'phone-portrait' },
     { id: 2, name: 'Home', icon: 'home' },
@@ -200,7 +258,11 @@ export default function HomeScreen() {
                   <Text style={styles.profileName}>{user?.name || 'Guest'}</Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.searchButton}>
+
+              <TouchableOpacity
+                style={styles.searchButton}
+                onPress={() => setSearchModalVisible(true)}
+              >
                 <Ionicons name="search" size={22} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.notificationButton}>
@@ -272,15 +334,11 @@ export default function HomeScreen() {
               </View>
               <View style={styles.productGrid}>
                 {products.map((product) => {
-                  // Debugging: Log the product ID and its type
-                  console.log('Product ID:', product._id, 'Type:', typeof product._id);
-
-                  // Ensure the key is unique and valid
                   const productKey = product._id ? `product-${product._id}` : `product-${Math.random()}`;
 
                   return (
                     <TouchableOpacity
-                      key={productKey} // Use a unique key
+                      key={productKey}
                       style={styles.productCard}
                       onPress={() => handleProductClick(product)}
                     >
@@ -316,6 +374,125 @@ export default function HomeScreen() {
         </LinearGradient>
       </ImageBackground>
 
+      {/* Search Modal */}
+      <Modal
+        visible={searchModalVisible}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setSearchModalVisible(false)}
+      >
+        <LinearGradient
+          colors={['rgba(0,0,0,0.9)', 'rgba(0,0,0,0.95)']}
+          style={styles.searchModalContainer}
+        >
+          <View style={styles.searchHeader}>
+            <TouchableOpacity onPress={() => setSearchModalVisible(false)}>
+              <Ionicons name="arrow-back" size={24} color="#ff8c42" />
+            </TouchableOpacity>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search products..."
+              placeholderTextColor="#aaa"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus={true}
+              onSubmitEditing={handleSearch}
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={20} color="#ff8c42" />
+              </TouchableOpacity>
+            ) : (
+              <Ionicons name="search" size={20} color="#ff8c42" />
+            )}
+          </View>
+
+          {/* Price Range Filter */}
+          <TouchableOpacity 
+            style={styles.priceFilterButton}
+            onPress={() => setShowPriceFilter(!showPriceFilter)}
+          >
+            <Text style={styles.priceFilterButtonText}>
+              Price Range: ${minPrice} - ${maxPrice}
+            </Text>
+            <Ionicons 
+              name={showPriceFilter ? 'chevron-up' : 'chevron-down'} 
+              size={16} 
+              color="#ff8c42" 
+            />
+          </TouchableOpacity>
+
+          {showPriceFilter && <PriceRangeSlider />}
+
+          {searchQuery ? (
+            <FlatList
+              data={filteredProducts}
+              keyExtractor={(item) => item._id}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={styles.searchResultItem}
+                  onPress={() => {
+                    handleProductClick(item);
+                    setSearchModalVisible(false);
+                  }}
+                >
+                  <Image
+                    source={{ uri: item.photo || 'https://via.placeholder.com/150' }}
+                    style={styles.searchResultImage}
+                  />
+                  <View style={styles.searchResultInfo}>
+                    <Text style={styles.searchResultName}>{item.name}</Text>
+                    <Text style={styles.searchResultPrice}>${item.price}</Text>
+                    <Text style={styles.searchResultDescription} numberOfLines={2}>
+                      {item.description}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.searchResultsContainer}
+              ListEmptyComponent={
+                <View style={styles.noResultsContainer}>
+                  <Ionicons name="search" size={50} color="#ff8c42" />
+                  <Text style={styles.noResultsText}>No products found</Text>
+                  <Text style={styles.noResultsSubText}>
+                    Try adjusting your search or filter criteria
+                  </Text>
+                </View>
+              }
+            />
+          ) : (
+            <View style={styles.recentSearchesContainer}>
+              <Text style={styles.recentSearchesTitle}>Recent Searches</Text>
+              {recentSearches.length > 0 ? (
+                <FlatList
+                  data={recentSearches}
+                  keyExtractor={(item, index) => index.toString()}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.recentSearchItem}
+                      onPress={() => handleRecentSearchPress(item)}
+                    >
+                      <Ionicons name="time" size={20} color="#ff8c42" />
+                      <Text style={styles.recentSearchText}>{item.split(' (')[0]}</Text>
+                      {item.includes('$') && (
+                        <Text style={styles.recentSearchPriceRange}>
+                          {item.match(/\$(\d+)-(\d+)/)[0]}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                />
+              ) : (
+                <View style={styles.noRecentSearchesContainer}>
+                  <Ionicons name="time" size={50} color="#ff8c42" />
+                  <Text style={styles.noRecentSearches}>No recent searches</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </LinearGradient>
+      </Modal>
+
       {/* Bottom Navigation Bar */}
       <Navbar cartItemCount={cartItemCount} />
 
@@ -338,12 +515,6 @@ export default function HomeScreen() {
                 <Text style={styles.modalProductDescription}>{selectedProduct.description}</Text>
                 <Text style={styles.modalProductPrice}>Price: ${selectedProduct.price}</Text>
                 <Text style={styles.modalProductCategory}>Category: {selectedProduct.category}</Text>
-                <Text style={styles.modalProductCrust}>Crust: {selectedProduct.crust}</Text>
-                <Text style={styles.modalProductSize}>Size: {selectedProduct.size}</Text>
-                <Text style={styles.modalProductQuantity}>Quantity: {selectedProduct.quantity}</Text>
-                <Text style={styles.modalProductCreatedAt}>
-                  Created At: {new Date(selectedProduct.createdAt).toLocaleDateString()}
-                </Text>
                 <TouchableOpacity
                   style={styles.closeButton}
                   onPress={() => setModalVisible(false)}
@@ -692,25 +863,6 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 10,
   },
-  modalProductCrust: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 10,
-  },
-  modalProductSize: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 10,
-  },
-  modalProductQuantity: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 10,
-  },
-  modalProductCreatedAt: {
-    fontSize: 14,
-    color: '#777',
-  },
   closeButton: {
     backgroundColor: '#ff8c42',
     padding: 10,
@@ -722,5 +874,141 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  // Search Modal Styles
+  searchModalContainer: {
+    flex: 1,
+    paddingTop: 50,
+  },
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    marginHorizontal: 10,
+    paddingHorizontal: 15,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    color: '#fff',
+  },
+  priceFilterButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  priceFilterButtonText: {
+    color: '#ff8c42',
+    fontSize: 14,
+  },
+  priceRangeContainer: {
+    padding: 15,
+    backgroundColor: 'rgba(30,30,30,0.8)',
+  },
+  priceRangeLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  priceRangeLabel: {
+    color: '#fff',
+    fontSize: 12,
+  },
+  priceSlider: {
+    width: '100%',
+    height: 40,
+  },
+  searchResultsContainer: {
+    padding: 15,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  searchResultImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 10,
+    marginRight: 15,
+    backgroundColor: '#333',
+  },
+  searchResultInfo: {
+    flex: 1,
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
+    marginBottom: 5,
+  },
+  searchResultPrice: {
+    fontSize: 14,
+    color: '#ff8c42',
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  searchResultDescription: {
+    fontSize: 12,
+    color: '#aaa',
+  },
+  noResultsContainer: {
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  noResultsText: {
+    color: '#ff8c42',
+    fontSize: 18,
+    marginTop: 10,
+  },
+  noResultsSubText: {
+    color: '#aaa',
+    fontSize: 14,
+    marginTop: 5,
+  },
+  recentSearchesContainer: {
+    padding: 15,
+  },
+  recentSearchesTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#ff8c42',
+  },
+  recentSearchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  recentSearchText: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#fff',
+  },
+  recentSearchPriceRange: {
+    color: '#ff8c42',
+    fontSize: 12,
+    marginLeft: 10,
+  },
+  noRecentSearchesContainer: {
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  noRecentSearches: {
+    color: '#ff8c42',
+    fontSize: 18,
+    marginTop: 10,
   },
 });
