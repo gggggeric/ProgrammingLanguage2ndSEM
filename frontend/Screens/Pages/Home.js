@@ -198,8 +198,8 @@ export default function HomeScreen() {
   const PriceRangeSlider = () => (
     <View style={styles.priceRangeContainer}>
       <View style={styles.priceRangeLabels}>
-        <Text style={styles.priceRangeLabel}>${minPrice}</Text>
-        <Text style={styles.priceRangeLabel}>${maxPrice}</Text>
+        <Text style={styles.priceRangeLabel}>₱{minPrice}</Text>
+        <Text style={styles.priceRangeLabel}>₱{maxPrice}</Text>
       </View>
       <Slider
         style={styles.priceSlider}
@@ -358,7 +358,7 @@ export default function HomeScreen() {
                       </View>
                       <View style={styles.productInfo}>
                         <Text style={styles.productName} numberOfLines={1}>{product.name}</Text>
-                        <Text style={styles.productPrice}>${product.price}</Text>
+                        <Text style={styles.productPrice}>₱{product.price}</Text>
                         {product.rating && renderStars(product.rating)}
                       </View>
                       <TouchableOpacity style={styles.addToCartButton} onPress={() => addToCart(product)}>
@@ -413,7 +413,7 @@ export default function HomeScreen() {
             onPress={() => setShowPriceFilter(!showPriceFilter)}
           >
             <Text style={styles.priceFilterButtonText}>
-              Price Range: ${minPrice} - ${maxPrice}
+              Price Range: ₱{minPrice} - ₱{maxPrice}
             </Text>
             <Ionicons 
               name={showPriceFilter ? 'chevron-up' : 'chevron-down'} 
@@ -442,7 +442,7 @@ export default function HomeScreen() {
                   />
                   <View style={styles.searchResultInfo}>
                     <Text style={styles.searchResultName}>{item.name}</Text>
-                    <Text style={styles.searchResultPrice}>${item.price}</Text>
+                    <Text style={styles.searchResultPrice}>₱{item.price}</Text>
                     <Text style={styles.searchResultDescription} numberOfLines={2}>
                       {item.description}
                     </Text>
@@ -513,7 +513,7 @@ export default function HomeScreen() {
                 />
                 <Text style={styles.modalProductName}>{selectedProduct.name}</Text>
                 <Text style={styles.modalProductDescription}>{selectedProduct.description}</Text>
-                <Text style={styles.modalProductPrice}>Price: ${selectedProduct.price}</Text>
+                <Text style={styles.modalProductPrice}>Price: ₱{selectedProduct.price}</Text>
                 <Text style={styles.modalProductCategory}>Category: {selectedProduct.category}</Text>
                 <TouchableOpacity
                   style={styles.closeButton}

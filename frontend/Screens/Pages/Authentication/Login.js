@@ -25,47 +25,61 @@ export default function Login({ navigation }) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-        Alert.alert('Error', 'Please fill in all fields.');
-        return;
+      Alert.alert('Error', 'Please fill in all fields.');
+      return;
     }
-
+  
     try {
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, password }),
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            // Save the token securely using Expo SecureStore
-            await SecureStore.setItemAsync('authToken', data.token);
-
-            // Save the userId securely (convert to string if necessary)
-            await SecureStore.setItemAsync('userId', String(data.user.id)); // Use data.user.id
-
-            // Save the userType securely
-            await SecureStore.setItemAsync('userType', data.user.userType); // Store userType
-
-            // Check the user's role (userType)
-            if (data.user.userType === 'admin') {
-                Alert.alert('Success', 'You have logged in as an admin!');
-                navigation.navigate('AdminDashboard'); // Redirect to Admin Dashboard
-            } else {
-                Alert.alert('Success', 'You have logged in successfully!');
-                navigation.navigate('Home'); // Redirect to Home for regular users
-            }
-        } else {
-            Alert.alert('Error', data.message || 'Login failed');
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+  
+      const data = await response.json();
+  
+      if (response.ok) {
+        // 1. First, ensure user has an address object (even if empty)
+        if (!data.user.address) {
+          data.user.address = {
+            street: "",
+            city: "",
+            state: "",
+            postalCode: "",
+            country: ""
+          };
         }
+  
+        // 2. Store ALL user data at once (this is the key change)
+        await SecureStore.setItemAsync('userData', JSON.stringify(data.user));
+  
+        // 3. Keep your existing storage calls (for backward compatibility)
+        await Promise.all([
+          SecureStore.setItemAsync('authToken', data.token),
+          SecureStore.setItemAsync('userId', data.user.id), // Remove String() conversion
+          SecureStore.setItemAsync('userType', data.user.userType),
+          SecureStore.setItemAsync('userAddress', JSON.stringify(data.user.address))
+        ]);
+  
+        // 4. Simplified navigation
+        const message = data.user.userType === 'admin' 
+          ? 'You have logged in as an admin!'
+          : 'You have logged in successfully!';
+        
+        Alert.alert('Success', message);
+        navigation.navigate(data.user.userType === 'admin' ? 'AdminDashboard' : 'Home');
+        
+      } else {
+        Alert.alert('Error', data.message || 'Login failed');
+      }
     } catch (error) {
-        console.error('Login Error:', error);
-        Alert.alert('Error', 'Network error, please try again.');
+      console.error('Login Error:', error);
+      Alert.alert('Error', 'Network error, please try again.');
     }
-};
+  };
+
   const toggleSecureEntry = () => {
     setSecureTextEntry(!secureTextEntry);
   };

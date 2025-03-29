@@ -141,14 +141,14 @@ const Profile = ({ navigation }) => {
       Alert.alert('Permission Denied', 'We need camera roll permissions to upload a profile photo.');
       return;
     }
-  
+
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
     });
-  
+
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const selectedImageUri = result.assets[0].uri; // Use result.assets[0].uri
       console.log('Selected Image URI:', selectedImageUri); // Log the selected image URI
@@ -238,13 +238,22 @@ const Profile = ({ navigation }) => {
                   Save Changes
                 </Button>
               </View>
-
               <TouchableOpacity
                 style={styles.logoutButton}
                 onPress={async () => {
-                  await SecureStore.deleteItemAsync('authToken');
+                  // Delete all stored items
+                  await Promise.all([
+                    SecureStore.deleteItemAsync('authToken'),
+                    SecureStore.deleteItemAsync('userId'),
+                    SecureStore.deleteItemAsync('userType'),
+                    SecureStore.deleteItemAsync('userAddress')
+                  ]);
+
                   Alert.alert('Logged Out', 'You have been logged out successfully.');
-                  navigation.reset({ index: 0, routes: [{ name: 'Landing' }] });
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Landing' }]
+                  });
                 }}
               >
                 <Text style={styles.logoutText}>Logout</Text>

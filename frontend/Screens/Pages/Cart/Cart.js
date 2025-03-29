@@ -11,19 +11,110 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
+  ActivityIndicator
 } from 'react-native';
-import { Button, Title } from 'react-native-paper';
+import { Button, Title, Checkbox, RadioButton } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import BottomNavbar from '../Navigation/BottomNavbar';
+import API_BASE_URL from '../../../config';
+
+const CartImage = ({ item }) => {
+  const [imgError, setImgError] = useState(false);
+  const imageUri = item.imageUrl || item.image || item.photo || null;
+  
+  if (imgError || !imageUri) {
+    return (
+      <View style={[styles.itemImage, styles.fallbackImage]}>
+        <Ionicons name="fast-food" size={24} color="#ccc" />
+      </View>
+    );
+  }
+  
+  return (
+    <Image
+      source={{ uri: imageUri }}
+      style={styles.itemImage}
+      onError={() => setImgError(true)}
+      resizeMode="cover"
+    />
+  );
+};
 
 export default function CartScreen({ navigation }) {
   const [cartItems, setCartItems] = useState([]);
   const [userId, setUserId] = useState(null);
   const [cartItemCount, setCartItemCount] = useState(0);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Fetch user ID and cart items from SecureStore when the component mounts
+  const paymentMethods = [
+    { id: 'credit_card', label: 'Credit Card', icon: 'card' },
+    { id: 'debit_card', label: 'Debit Card', icon: 'card' },
+    { id: 'paypal', label: 'PayPal', icon: 'logo-paypal' },
+    { id: 'cash_on_delivery', label: 'Cash on Delivery', icon: 'cash' },
+  ];
+
+  const clearUserSession = async () => {
+    await Promise.all([
+      SecureStore.deleteItemAsync('authToken'),
+      SecureStore.deleteItemAsync('userId'),
+      SecureStore.deleteItemAsync('userData'),
+    ]);
+  };
+
+  const handleCheckoutError = async (error) => {
+    console.error('Checkout error:', error);
+    let errorMessage = 'Checkout failed. Please try again.';
+    let requiresLogout = false;
+    let navigateTo = null;
+
+    if (error.message.includes('SESSION_EXPIRED') || 
+        error.message.includes('USER_NOT_AUTHORIZED') ||
+        error.message.includes('No token provided')) {
+      errorMessage = 'Your session has expired. Please log in again.';
+      requiresLogout = true;
+      navigateTo = 'Login';
+    } else if (error.message.includes('not active')) {
+      errorMessage = 'Your account is no longer active. Please contact support.';
+      requiresLogout = true;
+      navigateTo = 'Login';
+    }
+
+    if (requiresLogout) {
+      await clearUserSession();
+    }
+
+    Alert.alert('Checkout Failed', errorMessage, [
+      { 
+        text: 'OK', 
+        onPress: () => {
+          if (navigateTo) {
+            navigation.navigate(navigateTo);
+          }
+        }
+      }
+    ]);
+  };
+
+  const updateCartState = async (items, userId) => {
+    setCartItems(items);
+    setSelectedItems([]);
+    const count = items.reduce((sum, item) => sum + item.quantity, 0);
+    setCartItemCount(count);
+    
+    const cartKey = `cart_${userId}`;
+    await Promise.all([
+      SecureStore.setItemAsync(cartKey, JSON.stringify(items)),
+      SecureStore.setItemAsync('cartItemCount', String(count))
+    ]);
+  };
+
   useEffect(() => {
     const fetchUserAndCart = async () => {
       try {
@@ -32,10 +123,12 @@ export default function CartScreen({ navigation }) {
           setUserId(storedUserId);
           const cartKey = `cart_${storedUserId}`;
           const storedCartItems = await SecureStore.getItemAsync(cartKey);
+          
           if (storedCartItems) {
             const parsedCartItems = JSON.parse(storedCartItems);
             setCartItems(parsedCartItems);
-            setCartItemCount(parsedCartItems.reduce((sum, item) => sum + item.quantity, 0)); // Update total item count
+            setCartItemCount(parsedCartItems.reduce((sum, item) => sum + item.quantity, 0));
+            setSelectedItems(parsedCartItems.map(item => item._id));
           }
         }
       } catch (error) {
@@ -43,19 +136,27 @@ export default function CartScreen({ navigation }) {
       }
     };
 
-    // Set up a focus listener to refresh cart data when screen comes into focus
-    const unsubscribe = navigation.addListener('focus', () => {
-      fetchUserAndCart();
-    });
-
-    // Initial fetch
+    const unsubscribe = navigation.addListener('focus', fetchUserAndCart);
     fetchUserAndCart();
-
-    // Clean up the listener when component unmounts
     return unsubscribe;
   }, [navigation]);
 
-  // Function to update item quantity
+  const toggleItemSelection = (itemId) => {
+    setSelectedItems(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItems.length === cartItems.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(cartItems.map(item => item._id));
+    }
+  };
+
   const updateQuantity = (id, change) => {
     const updatedCartItems = cartItems.map((item) => {
       if (item._id === id) {
@@ -65,53 +166,294 @@ export default function CartScreen({ navigation }) {
       return item;
     });
     setCartItems(updatedCartItems);
-    const totalItems = updatedCartItems.reduce((sum, item) => sum + item.quantity, 0);
-    setCartItemCount(totalItems); // Update total item count
+    setCartItemCount(updatedCartItems.reduce((sum, item) => sum + item.quantity, 0));
     updateSecureStore(updatedCartItems);
   };
 
-  // Function to remove item from cart
   const removeItem = async (id) => {
     const updatedCartItems = cartItems.filter((item) => item._id !== id);
     setCartItems(updatedCartItems);
-    const totalItems = updatedCartItems.reduce((sum, item) => sum + item.quantity, 0);
-    setCartItemCount(totalItems); // Update total item count
-    await updateSecureStore(updatedCartItems); // Update SecureStore
+    setCartItemCount(updatedCartItems.reduce((sum, item) => sum + item.quantity, 0));
+    setSelectedItems(prev => prev.filter(itemId => itemId !== id));
+    await updateSecureStore(updatedCartItems);
     Alert.alert('Item Removed', 'The item has been removed from your cart.');
   };
 
-  // Function to update SecureStore with the latest cart items
   const updateSecureStore = async (updatedCartItems) => {
     if (userId) {
       const cartKey = `cart_${userId}`;
       try {
-        await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCartItems)); // Save updated cart
-        await SecureStore.setItemAsync('cartItemCount', String(updatedCartItems.reduce((sum, item) => sum + item.quantity, 0))); // Update global cart count
+        await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCartItems));
+        await SecureStore.setItemAsync('cartItemCount', String(updatedCartItems.reduce((sum, item) => sum + item.quantity, 0)));
       } catch (error) {
         console.error('Error updating SecureStore:', error);
       }
     }
   };
 
-  // Function to handle checkout
   const handleCheckout = async () => {
-    if (userId) {
-      try {
-        const cartKey = `cart_${userId}`;
-        await SecureStore.deleteItemAsync(cartKey);
-        setCartItems([]);
-        setCartItemCount(0);
-        await SecureStore.setItemAsync('cartItemCount', '0');
-        Alert.alert('Success', 'Your order has been placed successfully!');
-      } catch (error) {
-        console.error('Error during checkout:', error);
-        Alert.alert('Error', 'There was an issue during checkout. Please try again.');
+    if (!userId) {
+      Alert.alert('Error', 'Please log in to proceed with checkout.');
+      return;
+    }
+
+    if (selectedItems.length === 0) {
+      Alert.alert('Error', 'Please select at least one item to checkout.');
+      return;
+    }
+
+    setShowPaymentModal(true);
+  };
+
+  const confirmOrder = async () => {
+    if (!paymentMethod) {
+      Alert.alert('Error', 'Please select a payment method');
+      return;
+    }
+
+    setIsCheckingOut(true);
+    setShowPaymentModal(false);
+
+    try {
+      const authToken = await SecureStore.getItemAsync('authToken');
+      if (!authToken) {
+        throw new Error('SESSION_EXPIRED');
       }
+
+      const itemsToCheckout = cartItems.filter(item => selectedItems.includes(item._id));
+      const totalAmount = itemsToCheckout.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+      let userAddress;
+      try {
+        const addressJson = await SecureStore.getItemAsync('userAddress');
+        userAddress = addressJson ? JSON.parse(addressJson) : null;
+      } catch (error) {
+        console.error('Error fetching user address:', error);
+      }
+
+      if (!userAddress || !Object.values(userAddress).some(value => value && value.trim() !== '')) {
+        userAddress = {
+          street: "123 Main St",
+          city: "Anytown",
+          state: "CA",
+          postalCode: "12345",
+          country: "USA"
+        };
+      }
+
+      Alert.alert(
+        'Confirm Order',
+        'Are you ready to place your order?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => setIsCheckingOut(false)
+          },
+          {
+            text: 'Place Order',
+            onPress: () => processOrder(itemsToCheckout, userAddress, totalAmount)
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error preparing checkout:', error);
+      await handleCheckoutError(error);
     }
   };
 
-  // Calculate total
-  const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const processOrder = async (itemsToCheckout, shippingAddress, totalAmount) => {
+    setIsProcessing(true);
+    
+    try {
+      // 1. Get authentication tokens
+      const [authToken, storedUserId] = await Promise.all([
+        SecureStore.getItemAsync('authToken'),
+        SecureStore.getItemAsync('userId')
+      ]);
+
+      // 2. Validate session
+      if (!authToken || !storedUserId) {
+        throw new Error('SESSION_EXPIRED');
+      }
+
+      // 3. Prepare order data with image handling
+      const orderData = {
+        userId: storedUserId,
+        items: itemsToCheckout.map(item => {
+          // Handle different possible image fields and formats
+          let imageUrl = '';
+          
+          if (item.imageUrl) {
+            imageUrl = item.imageUrl;
+          } else if (item.image) {
+            // Handle both string URLs and image objects
+            imageUrl = typeof item.image === 'string' ? item.image : item.image.uri;
+          } else if (item.photo) {
+            imageUrl = typeof item.photo === 'string' ? item.photo : item.photo.uri;
+          }
+
+          // Validate image URL format
+          if (imageUrl && !isValidUrl(imageUrl)) {
+            console.warn(`Invalid image URL for product ${item._id}: ${imageUrl}`);
+            imageUrl = ''; // Fallback to empty string if invalid
+          }
+
+          return {
+            productId: item._id,
+            quantity: item.quantity,
+            priceAtOrder: item.price,
+            name: item.name,
+            photo: imageUrl || null // Send null if no valid image
+          };
+        }),
+        totalAmount: totalAmount,
+        shippingAddress: shippingAddress,
+        paymentMethod: paymentMethod
+      };
+
+      // 4. Submit order to backend
+      const response = await fetch(`${API_BASE_URL}/order/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(orderData)
+      });
+
+      // 5. Handle response
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.message || 'Order creation failed';
+        
+        if (response.status === 401) {
+          throw new Error('SESSION_EXPIRED');
+        }
+        if (response.status === 403) {
+          throw new Error('USER_NOT_AUTHORIZED');
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      
+      // 6. Update local cart state
+      const updatedCart = cartItems.filter(item => !selectedItems.includes(item._id));
+      const cartKey = `cart_${storedUserId}`;
+      await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCart));
+      
+      // 7. Update React state
+      setCartItems(updatedCart);
+      setSelectedItems([]);
+      setCartItemCount(updatedCart.reduce((sum, item) => sum + item.quantity, 0));
+
+      // 8. Show success and redirect
+      Alert.alert(
+        'Order Successful',
+        'Your order has been placed successfully!',
+        [{
+          text: 'OK',
+          onPress: () => {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Order History' }],
+            });
+          }
+        }]
+      );
+
+      return result;
+
+    } catch (error) {
+      // Enhanced error handling
+      let errorMessage = 'Failed to place order';
+      
+      if (error.message === 'SESSION_EXPIRED') {
+        errorMessage = 'Your session has expired. Please log in again.';
+        // Clear storage and navigate to login
+        await SecureStore.deleteItemAsync('authToken');
+        await SecureStore.deleteItemAsync('userId');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+      
+      Alert.alert('Order Error', errorMessage);
+      throw error; // Re-throw for additional handling if needed
+    } finally {
+      setIsCheckingOut(false);
+      setIsProcessing(false);
+    }
+};
+
+// Helper function to validate URLs
+const isValidUrl = (string) => {
+  try {
+    new URL(string);
+    return true;
+  } catch (err) {
+    return false;
+  }
+};
+
+  const selectedTotal = cartItems
+    .filter(item => selectedItems.includes(item._id))
+    .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const PaymentMethodModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={showPaymentModal}
+      onRequestClose={() => setShowPaymentModal(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Select Payment Method</Text>
+          
+          {paymentMethods.map((method) => (
+            <TouchableOpacity
+              key={method.id}
+              style={styles.paymentOption}
+              onPress={() => setPaymentMethod(method.id)}
+            >
+              <RadioButton
+                value={method.id}
+                status={paymentMethod === method.id ? 'checked' : 'unchecked'}
+                onPress={() => setPaymentMethod(method.id)}
+                color="#ff8c42"
+              />
+              <Ionicons name={method.icon} size={24} color="#ff8c42" />
+              <Text style={styles.paymentLabel}>{method.label}</Text>
+            </TouchableOpacity>
+          ))}
+          
+          <View style={styles.modalButtons}>
+            <Button
+              mode="outlined"
+              style={styles.modalButton}
+              onPress={() => setShowPaymentModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              style={styles.modalButton}
+              onPress={confirmOrder}
+              disabled={!paymentMethod || isProcessing}
+              loading={isProcessing}
+            >
+              {isProcessing ? 'Processing...' : 'Continue'}
+            </Button>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   return (
     <View style={styles.container}>
@@ -149,22 +491,49 @@ export default function CartScreen({ navigation }) {
               <Title style={styles.header}>Your Cart</Title>
               <Text style={styles.subheader}>{cartItems.length} items</Text>
 
-              {/* Cart Items or Empty State */}
               {cartItems.length > 0 ? (
                 <View style={styles.cartItemsContainer}>
+                  <TouchableOpacity 
+                    style={styles.selectAllContainer}
+                    onPress={toggleSelectAll}
+                  >
+                    <Checkbox.Android
+                      status={
+                        selectedItems.length === cartItems.length 
+                          ? 'checked' 
+                          : selectedItems.length > 0 
+                            ? 'indeterminate' 
+                            : 'unchecked'
+                      }
+                      color="#ff8c42"
+                    />
+                    <Text style={styles.selectAllText}>
+                      {selectedItems.length === cartItems.length 
+                        ? 'Deselect All' 
+                        : 'Select All'}
+                    </Text>
+                  </TouchableOpacity>
+
                   {cartItems.map((item) => (
-                    <View key={item._id} style={styles.cartItem}>
-                      {/* Display the product image */}
-                      <Image
-                        source={{ uri: item.photo || 'https://via.placeholder.com/150' }} // Fallback image if photo is missing
-                        style={styles.itemImage}
+                    <View 
+                      key={item._id} 
+                      style={[
+                        styles.cartItem,
+                        selectedItems.includes(item._id) && styles.selectedItem
+                      ]}
+                    >
+                      <Checkbox.Android
+                        status={selectedItems.includes(item._id) ? 'checked' : 'unchecked'}
+                        onPress={() => toggleItemSelection(item._id)}
+                        color="#ff8c42"
                       />
+                      <CartImage item={item} />
                       <View style={styles.itemDetails}>
                         <View style={styles.itemHeader}>
                           <Text style={styles.itemName}>{item.name}</Text>
-                          <Text style={styles.itemTotalPrice}>${(item.price * item.quantity).toFixed(2)}</Text>
+                          <Text style={styles.itemTotalPrice}>₱{(item.price * item.quantity).toFixed(2)}</Text>
                         </View>
-                        <Text style={styles.itemPrice}>${item.price.toFixed(2)} each</Text>
+                        <Text style={styles.itemPrice}>₱{item.price.toFixed(2)} each</Text>
                         <View style={styles.itemActions}>
                           <View style={styles.quantityControl}>
                             <TouchableOpacity
@@ -207,13 +576,12 @@ export default function CartScreen({ navigation }) {
                 </View>
               )}
 
-              {/* Order Summary */}
               {cartItems.length > 0 && (
                 <View style={styles.orderSummary}>
                   <View style={styles.orderDetails}>
                     <View style={styles.orderRow}>
-                      <Text style={styles.totalLabel}>Total</Text>
-                      <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+                      <Text style={styles.totalLabel}>Selected Items ({selectedItems.length})</Text>
+                      <Text style={styles.totalValue}>₱{selectedTotal.toFixed(2)}</Text>
                     </View>
                   </View>
                   <Button
@@ -222,8 +590,10 @@ export default function CartScreen({ navigation }) {
                     style={styles.checkoutButton}
                     labelStyle={styles.checkoutButtonLabel}
                     contentStyle={styles.buttonContent}
+                    disabled={selectedItems.length === 0 || isCheckingOut}
+                    loading={isCheckingOut}
                   >
-                    Proceed to Checkout
+                    {isCheckingOut ? 'Processing...' : 'Proceed to Checkout'}
                   </Button>
                 </View>
               )}
@@ -232,7 +602,7 @@ export default function CartScreen({ navigation }) {
         </LinearGradient>
       </ImageBackground>
 
-      {/* Add the BottomNavbar with the cartItemCount prop */}
+      <PaymentMethodModal />
       <BottomNavbar cartItemCount={cartItemCount} />
     </View>
   );
@@ -295,6 +665,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 40,
   },
+  selectAllContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 8,
+  },
+  selectAllText: {
+    color: '#ff8c42',
+    marginLeft: 8,
+    fontSize: 16,
+  },
   cartItemsContainer: {
     width: '100%',
     maxWidth: 400,
@@ -302,6 +683,7 @@ const styles = StyleSheet.create({
   },
   cartItem: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(30, 30, 30, 0.8)',
     borderRadius: 8,
     padding: 16,
@@ -309,10 +691,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 140, 66, 0.3)',
   },
+  selectedItem: {
+    backgroundColor: 'rgba(255, 140, 66, 0.1)',
+    borderColor: '#ff8c42',
+  },
   itemImage: {
     width: 80,
     height: 80,
     borderRadius: 8,
+    marginLeft: 8,
+  },
+  fallbackImage: {
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   itemDetails: {
     flex: 1,
@@ -444,5 +836,45 @@ const styles = StyleSheet.create({
   buttonContent: {
     height: 50,
     paddingVertical: 8,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+    color: '#333',
+  },
+  paymentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  paymentLabel: {
+    fontSize: 16,
+    marginLeft: 10,
+    color: '#333',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    marginHorizontal: 5,
   },
 });

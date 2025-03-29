@@ -61,10 +61,10 @@ export default function BottomNavbar({ cartItemCount: propCartItemCount }) {
             <Text style={styles.tabText}>Home</Text>
           </TouchableOpacity>
 
-          {/* Foods Tab */}
-          <TouchableOpacity style={styles.tab} onPress={() => handleNavigation('Foods')}>
-            <Ionicons name="fast-food" size={24} color="#ff8c42" />
-            <Text style={styles.tabText}>Foods</Text>
+          {/* History Tab */}
+          <TouchableOpacity style={styles.tab} onPress={() => handleNavigation('Order History')}>
+            <Ionicons name="time" size={24} color="#ff8c42" />
+            <Text style={styles.tabText}>History</Text>
           </TouchableOpacity>
 
           {/* Cart Tab */}

@@ -11,6 +11,7 @@ import AddProduct from './Screens/Pages/Admin/AddProduct';
 import Profile from './Screens/Pages/UserInformation/Profile';
 import CartScreen from './Screens/Pages/Cart/Cart';
 import SearchScreen from './Screens/Pages/Search';
+import OrderDetailsScreen from './Screens/Pages/Order/OrderHistory';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -26,6 +27,11 @@ export default function App() {
          <Stack.Screen 
           name="Search" 
           component={SearchScreen} 
+          options={{ headerShown: false }} // Hide header for Landing
+        />
+          <Stack.Screen 
+          name="Order History" 
+          component={OrderDetailsScreen} 
           options={{ headerShown: false }} // Hide header for Landing
         />
         <Stack.Screen 
@@ -63,7 +69,7 @@ export default function App() {
         <Stack.Screen 
           name="AddProduct" 
           component={AddProduct} 
-          options={{ title: 'Add Product' }} // Show header with title
+          options={{ headerShown: false }} // Hide header for About
         />
          <Stack.Screen 
           name="Cart" 
