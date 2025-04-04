@@ -18,6 +18,8 @@ import { Button, Title, Checkbox, RadioButton } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+import { useDispatch, useSelector } from 'react-redux';
+import { createOrder, clearOrderError } from '../../../redux/actions/orderActions';
 import BottomNavbar from '../Navigation/BottomNavbar';
 import API_BASE_URL from '../../../config';
 
@@ -48,10 +50,11 @@ export default function CartScreen({ navigation }) {
   const [userId, setUserId] = useState(null);
   const [cartItemCount, setCartItemCount] = useState(0);
   const [selectedItems, setSelectedItems] = useState([]);
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  
+  const dispatch = useDispatch();
+  const { loading: isProcessing, error: orderError } = useSelector(state => state.order);
 
   const paymentMethods = [
     { id: 'credit_card', label: 'Credit Card', icon: 'card' },
@@ -141,6 +144,13 @@ export default function CartScreen({ navigation }) {
     return unsubscribe;
   }, [navigation]);
 
+  useEffect(() => {
+    if (orderError) {
+      Alert.alert('Order Error', orderError);
+      dispatch(clearOrderError());
+    }
+  }, [orderError]);
+
   const toggleItemSelection = (itemId) => {
     setSelectedItems(prev => 
       prev.includes(itemId) 
@@ -211,7 +221,6 @@ export default function CartScreen({ navigation }) {
       return;
     }
 
-    setIsCheckingOut(true);
     setShowPaymentModal(false);
 
     try {
@@ -247,12 +256,11 @@ export default function CartScreen({ navigation }) {
         [
           {
             text: 'Cancel',
-            style: 'cancel',
-            onPress: () => setIsCheckingOut(false)
+            style: 'cancel'
           },
           {
             text: 'Place Order',
-            onPress: () => processOrder(itemsToCheckout, userAddress, totalAmount)
+            onPress: () => processOrderWithRedux(itemsToCheckout, userAddress, totalAmount)
           }
         ]
       );
@@ -262,41 +270,24 @@ export default function CartScreen({ navigation }) {
     }
   };
 
-  const processOrder = async (itemsToCheckout, shippingAddress, totalAmount) => {
-    setIsProcessing(true);
-    
+  const processOrderWithRedux = async (itemsToCheckout, shippingAddress, totalAmount) => {
     try {
-      // 1. Get authentication tokens
-      const [authToken, storedUserId] = await Promise.all([
-        SecureStore.getItemAsync('authToken'),
-        SecureStore.getItemAsync('userId')
-      ]);
-
-      // 2. Validate session
-      if (!authToken || !storedUserId) {
-        throw new Error('SESSION_EXPIRED');
-      }
-
-      // 3. Prepare order data with image handling
       const orderData = {
-        userId: storedUserId,
+        userId,
         items: itemsToCheckout.map(item => {
-          // Handle different possible image fields and formats
           let imageUrl = '';
           
           if (item.imageUrl) {
             imageUrl = item.imageUrl;
           } else if (item.image) {
-            // Handle both string URLs and image objects
             imageUrl = typeof item.image === 'string' ? item.image : item.image.uri;
           } else if (item.photo) {
             imageUrl = typeof item.photo === 'string' ? item.photo : item.photo.uri;
           }
 
-          // Validate image URL format
           if (imageUrl && !isValidUrl(imageUrl)) {
             console.warn(`Invalid image URL for product ${item._id}: ${imageUrl}`);
-            imageUrl = ''; // Fallback to empty string if invalid
+            imageUrl = '';
           }
 
           return {
@@ -304,51 +295,25 @@ export default function CartScreen({ navigation }) {
             quantity: item.quantity,
             priceAtOrder: item.price,
             name: item.name,
-            photo: imageUrl || null // Send null if no valid image
+            photo: imageUrl || null
           };
         }),
-        totalAmount: totalAmount,
-        shippingAddress: shippingAddress,
-        paymentMethod: paymentMethod
+        totalAmount,
+        shippingAddress,
+        paymentMethod
       };
 
-      // 4. Submit order to backend
-      const response = await fetch(`${API_BASE_URL}/order/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify(orderData)
-      });
-
-      // 5. Handle response
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMsg = errorData.message || 'Order creation failed';
-        
-        if (response.status === 401) {
-          throw new Error('SESSION_EXPIRED');
-        }
-        if (response.status === 403) {
-          throw new Error('USER_NOT_AUTHORIZED');
-        }
-        throw new Error(errorMsg);
-      }
-
-      const result = await response.json();
+      await dispatch(createOrder(orderData));
       
-      // 6. Update local cart state
+      // Update local cart state
       const updatedCart = cartItems.filter(item => !selectedItems.includes(item._id));
-      const cartKey = `cart_${storedUserId}`;
+      const cartKey = `cart_${userId}`;
       await SecureStore.setItemAsync(cartKey, JSON.stringify(updatedCart));
       
-      // 7. Update React state
       setCartItems(updatedCart);
       setSelectedItems([]);
       setCartItemCount(updatedCart.reduce((sum, item) => sum + item.quantity, 0));
 
-      // 8. Show success and redirect
       Alert.alert(
         'Order Successful',
         'Your order has been placed successfully!',
@@ -362,43 +327,19 @@ export default function CartScreen({ navigation }) {
           }
         }]
       );
-
-      return result;
-
     } catch (error) {
-      // Enhanced error handling
-      let errorMessage = 'Failed to place order';
-      
-      if (error.message === 'SESSION_EXPIRED') {
-        errorMessage = 'Your session has expired. Please log in again.';
-        // Clear storage and navigate to login
-        await SecureStore.deleteItemAsync('authToken');
-        await SecureStore.deleteItemAsync('userId');
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' }],
-        });
-      } else {
-        errorMessage = error.message || errorMessage;
-      }
-      
-      Alert.alert('Order Error', errorMessage);
-      throw error; // Re-throw for additional handling if needed
-    } finally {
-      setIsCheckingOut(false);
-      setIsProcessing(false);
+      // Error handling is done in the reducer
     }
-};
+  };
 
-// Helper function to validate URLs
-const isValidUrl = (string) => {
-  try {
-    new URL(string);
-    return true;
-  } catch (err) {
-    return false;
-  }
-};
+  const isValidUrl = (string) => {
+    try {
+      new URL(string);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
 
   const selectedTotal = cartItems
     .filter(item => selectedItems.includes(item._id))
@@ -590,10 +531,10 @@ const isValidUrl = (string) => {
                     style={styles.checkoutButton}
                     labelStyle={styles.checkoutButtonLabel}
                     contentStyle={styles.buttonContent}
-                    disabled={selectedItems.length === 0 || isCheckingOut}
-                    loading={isCheckingOut}
+                    disabled={selectedItems.length === 0 || isProcessing}
+                    loading={isProcessing}
                   >
-                    {isCheckingOut ? 'Processing...' : 'Proceed to Checkout'}
+                    {isProcessing ? 'Processing...' : 'Proceed to Checkout'}
                   </Button>
                 </View>
               )}
@@ -611,11 +552,11 @@ const isValidUrl = (string) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   backgroundImage: {
     flex: 1,
-    width: '100%',
-    height: '100%',
+    resizeMode: 'cover',
   },
   gradient: {
     flex: 1,
@@ -624,21 +565,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingBottom: 80,
   },
   backButton: {
     position: 'absolute',
-    top: 20,
+    top: 40,
     left: 20,
-    padding: 8,
-    zIndex: 10,
+    zIndex: 1,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginTop: 50,
+    marginBottom: 20,
   },
   logoCircle: {
     width: 60,
@@ -649,193 +587,176 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoText: {
-    color: '#fff',
-    fontSize: 30,
+    color: 'white',
+    fontSize: 28,
     fontWeight: 'bold',
   },
   header: {
+    color: 'white',
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#ff8c42',
     textAlign: 'center',
+    marginBottom: 5,
   },
   subheader: {
-    fontSize: 16,
-    color: '#e0e0e0',
+    color: '#ccc',
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: 20,
+  },
+  cartItemsContainer: {
+    paddingHorizontal: 20,
   },
   selectAllContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    paddingHorizontal: 8,
+    marginBottom: 15,
   },
   selectAllText: {
-    color: '#ff8c42',
-    marginLeft: 8,
-    fontSize: 16,
-  },
-  cartItemsContainer: {
-    width: '100%',
-    maxWidth: 400,
-    alignSelf: 'center',
+    color: 'white',
+    marginLeft: 10,
   },
   cartItem: {
     flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 15,
     alignItems: 'center',
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 140, 66, 0.3)',
   },
   selectedItem: {
-    backgroundColor: 'rgba(255, 140, 66, 0.1)',
+    backgroundColor: 'rgba(255,140,66,0.2)',
+    borderWidth: 1,
     borderColor: '#ff8c42',
   },
   itemImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    marginLeft: 8,
+    width: 60,
+    height: 60,
+    borderRadius: 10,
+    marginLeft: 10,
   },
   fallbackImage: {
-    backgroundColor: '#333',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   itemDetails: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: 15,
   },
   itemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
   },
   itemName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#fff',
-  },
-  itemTotalPrice: {
+    color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ff8c42',
+    flex: 1,
   },
   itemPrice: {
+    color: '#ccc',
     fontSize: 14,
-    color: '#888',
-    marginTop: 4,
+    marginTop: 5,
+  },
+  itemTotalPrice: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   itemActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
+    marginTop: 10,
   },
   quantityControl: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   quantityButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#333',
+    backgroundColor: '#ff8c42',
+    width: 25,
+    height: 25,
+    borderRadius: 12.5,
     justifyContent: 'center',
     alignItems: 'center',
   },
   quantityText: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginHorizontal: 12,
-    color: '#fff',
+    color: 'white',
+    marginHorizontal: 10,
+    minWidth: 20,
+    textAlign: 'center',
   },
   removeButton: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   removeText: {
-    fontSize: 14,
     color: '#ff5e62',
-    marginLeft: 4,
+    marginLeft: 5,
   },
   emptyCart: {
     alignItems: 'center',
-    marginTop: 40,
+    justifyContent: 'center',
+    padding: 40,
   },
   emptyCartTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#fff',
-    marginTop: 16,
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 20,
   },
   emptyCartSubtitle: {
-    fontSize: 14,
-    color: '#888',
-    marginTop: 8,
+    color: '#ccc',
     textAlign: 'center',
+    marginTop: 10,
   },
   browseButton: {
-    backgroundColor: '#ff8c42',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
     marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: '#ff8c42',
+    borderRadius: 20,
   },
   browseButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
+    color: 'white',
+    fontWeight: 'bold',
   },
   orderSummary: {
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
-    borderRadius: 8,
-    padding: 16,
     marginTop: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 140, 66, 0.3)',
+    paddingHorizontal: 20,
   },
   orderDetails: {
-    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
   },
   orderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   totalLabel: {
+    color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
   },
   totalValue: {
+    color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ff8c42',
   },
   checkoutButton: {
     backgroundColor: '#ff8c42',
-    borderRadius: 8,
-    marginVertical: 10,
-    shadowColor: '#ff8c42',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    borderRadius: 25,
+    height: 50,
+    justifyContent: 'center',
   },
   checkoutButtonLabel: {
-    color: '#000',
-    fontWeight: 'bold',
+    color: 'white',
     fontSize: 16,
-    letterSpacing: 1,
   },
   buttonContent: {
     height: 50,
-    paddingVertical: 8,
   },
   modalContainer: {
     flex: 1,
@@ -844,29 +765,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContent: {
-    width: '90%',
-    backgroundColor: 'white',
+    width: '80%',
+    backgroundColor: '#1e1e1e',
     borderRadius: 10,
     padding: 20,
   },
   modalTitle: {
-    fontSize: 20,
+    color: 'white',
+    fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
-    color: '#333',
   },
   paymentOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    paddingVertical: 10,
   },
   paymentLabel: {
-    fontSize: 16,
+    color: 'white',
     marginLeft: 10,
-    color: '#333',
   },
   modalButtons: {
     flexDirection: 'row',
