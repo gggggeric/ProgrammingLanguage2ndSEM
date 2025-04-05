@@ -17,13 +17,21 @@ const reviewSchema = new mongoose.Schema({
     min: 1,
     max: 5
   },
+  title: {
+    type: String,
+    required: false // Optional field
+  },
   comment: {
     type: String,
     required: [true, 'Comment is required']
   },
-  photo: {
-    type: String,
-    // Not required since it can be null
+  photos: {  // Changed from 'photo' to 'photos' as array
+    type: [String],
+    default: []
+  },
+  verifiedPurchase: {
+    type: Boolean,
+    default: true
   },
   createdAt: {
     type: Date,

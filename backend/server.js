@@ -20,6 +20,7 @@ app.use('/api/auth', require('./routes/authRoutes')); // Authentication routes
 app.use('/api/products', require('./routes/productRoutes')); // Product routes
 app.use('/api/admin/products', require('./routes/adminRoutes')); // Product routes
 app.use('/api/user', require('./routes/userRoutes')); // Product routes
-app.use('/api/order', require('./routes/orderRoutes')); // Order Routes
+app.use('/api/order', require('./routes/orderRoutes')); // Order 
+app.use('/api/review', require('./routes/reviewRoutes')); // Order Routes
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
