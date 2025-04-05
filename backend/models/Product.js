@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const ProductSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId, // Reference to the User model
-    ref: 'User', // The model to which this ObjectId refers
+    ref: 'User', // The model to which this ObjectId refers admin who made the product
     required: true,
   },
   name: {

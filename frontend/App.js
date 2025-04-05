@@ -14,7 +14,7 @@ import Profile from './Screens/Pages/UserInformation/Profile';
 import CartScreen from './Screens/Pages/Cart/Cart';
 import SearchScreen from './Screens/Pages/Search';
 import OrderDetailsScreen from './Screens/Pages/Order/OrderHistory';
-
+import AdminOrdersScreen from './Screens/Pages/Admin/Orders';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -31,6 +31,11 @@ export default function App() {
           <Stack.Screen 
             name="Search" 
             component={SearchScreen} 
+            options={{ headerShown: false }}
+          />
+            <Stack.Screen 
+            name="Admin Order" 
+            component={AdminOrdersScreen} 
             options={{ headerShown: false }}
           />
           <Stack.Screen 

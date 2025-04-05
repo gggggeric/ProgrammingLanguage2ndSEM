@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  Modal
+  Modal,
+  Picker
 } from 'react-native';
 import { Title } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,11 +22,23 @@ import API_BASE_URL from '../../../config';
 
 const OrderHistoryScreen = ({ navigation }) => {
   const [orders, setOrders] = useState([]);
+  const [filteredOrders, setFilteredOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userId, setUserId] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [showStatusFilter, setShowStatusFilter] = useState(false);
+
+  // Status options for filter
+  const statusOptions = [
+    { label: 'All Orders', value: 'all' },
+    { label: 'Processing', value: 'processing' },
+    { label: 'Shipped', value: 'shipped' },
+    { label: 'Delivered', value: 'delivered' },
+    { label: 'Cancelled', value: 'cancelled' }
+  ];
 
   // Fetch user ID from secure storage
   useEffect(() => {
@@ -42,6 +55,11 @@ const OrderHistoryScreen = ({ navigation }) => {
       fetchOrders();
     }
   }, [userId]);
+
+  // Apply filter when orders or statusFilter changes
+  useEffect(() => {
+    applyFilter();
+  }, [orders, statusFilter]);
 
   const fetchOrders = async () => {
     try {
@@ -77,6 +95,14 @@ const OrderHistoryScreen = ({ navigation }) => {
     } finally {
       setIsLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const applyFilter = () => {
+    if (statusFilter === 'all') {
+      setFilteredOrders(orders);
+    } else {
+      setFilteredOrders(orders.filter(order => order.status === statusFilter));
     }
   };
 
@@ -124,6 +150,14 @@ const OrderHistoryScreen = ({ navigation }) => {
   const handleOrderPress = (order) => {
     setSelectedOrder(order);
     setModalVisible(true);
+  };
+
+  const handleReviewPress = (order) => {
+    navigation.navigate('ReviewScreen', { orderId: order._id });
+  };
+
+  const toggleStatusFilter = () => {
+    setShowStatusFilter(!showStatusFilter);
   };
 
   const OrderDetailsModal = () => (
@@ -203,6 +237,18 @@ const OrderHistoryScreen = ({ navigation }) => {
               <Text style={styles.totalValue}>₱{selectedOrder?.totalAmount}</Text>
             </View>
           </View>
+
+          {selectedOrder?.status === 'delivered' && (
+            <TouchableOpacity
+              style={styles.reviewButton}
+              onPress={() => {
+                setModalVisible(false);
+                handleReviewPress(selectedOrder);
+              }}
+            >
+              <Text style={styles.reviewButtonText}>Write a Review</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>
@@ -248,17 +294,63 @@ const OrderHistoryScreen = ({ navigation }) => {
 
             <View style={styles.headerContainer}>
               <Title style={styles.header}>Order History</Title>
-              <Text style={styles.subheader}>{orders.length} past orders</Text>
+              <Text style={styles.subheader}>{filteredOrders.length} orders</Text>
             </View>
 
-            {orders.length === 0 ? (
+            {/* Status Filter */}
+            <View style={styles.filterContainer}>
+              <TouchableOpacity 
+                style={styles.filterButton}
+                onPress={toggleStatusFilter}
+              >
+                <Text style={styles.filterButtonText}>
+                  {statusOptions.find(opt => opt.value === statusFilter)?.label || 'Filter Orders'}
+                </Text>
+                <Ionicons 
+                  name={showStatusFilter ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color="#ff8c42" 
+                />
+              </TouchableOpacity>
+
+              {showStatusFilter && (
+                <View style={styles.filterDropdown}>
+                  {statusOptions.map((option) => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.filterOption,
+                        statusFilter === option.value && styles.selectedFilterOption
+                      ]}
+                      onPress={() => {
+                        setStatusFilter(option.value);
+                        setShowStatusFilter(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.filterOptionText,
+                        statusFilter === option.value && styles.selectedFilterOptionText
+                      ]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {filteredOrders.length === 0 ? (
               <View style={styles.emptyCart}>
                 <Ionicons name="receipt-outline" size={64} color="#ff8c42" />
                 <Text style={styles.emptyCartTitle}>No orders found</Text>
-                <Text style={styles.emptyCartSubtitle}>Your order history will appear here</Text>
+                <Text style={styles.emptyCartSubtitle}>
+                  {statusFilter === 'all' 
+                    ? 'Your order history will appear here' 
+                    : `No ${statusFilter} orders found`}
+                </Text>
               </View>
             ) : (
-              orders.map(order => (
+              filteredOrders.map(order => (
                 <TouchableOpacity
                   key={order._id}
                   onPress={() => handleOrderPress(order)}
@@ -302,6 +394,15 @@ const OrderHistoryScreen = ({ navigation }) => {
                       <Text style={styles.totalLabel}>Order Total:</Text>
                       <Text style={styles.totalAmount}>₱{order.totalAmount}</Text>
                     </View>
+
+                    {order.status === 'delivered' && (
+                      <TouchableOpacity
+                        style={styles.reviewButton}
+                        onPress={() => handleReviewPress(order)}
+                      >
+                        <Text style={styles.reviewButtonText}>Write a Review</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </TouchableOpacity>
               ))
@@ -348,7 +449,7 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
     marginTop: 20,
   },
   header: {
@@ -362,6 +463,51 @@ const styles = StyleSheet.create({
     color: '#e0e0e0',
     textAlign: 'center',
     marginTop: 8,
+  },
+  filterContainer: {
+    marginBottom: 20,
+    position: 'relative',
+    zIndex: 1,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(30, 30, 30, 0.8)',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 140, 66, 0.3)',
+  },
+  filterButtonText: {
+    color: '#ff8c42',
+    fontSize: 16,
+  },
+  filterDropdown: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(40, 40, 40, 0.95)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 140, 66, 0.3)',
+    paddingVertical: 8,
+    zIndex: 10,
+  },
+  filterOption: {
+    padding: 12,
+  },
+  selectedFilterOption: {
+    backgroundColor: 'rgba(255, 140, 66, 0.2)',
+  },
+  filterOptionText: {
+    color: '#e0e0e0',
+    fontSize: 16,
+  },
+  selectedFilterOptionText: {
+    color: '#ff8c42',
+    fontWeight: 'bold',
   },
   emptyCart: {
     alignItems: 'center',
@@ -476,6 +622,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#ff8c42',
+  },
+  reviewButton: {
+    backgroundColor: 'rgba(255, 140, 66, 0.2)',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 140, 66, 0.5)',
+  },
+  reviewButtonText: {
+    color: '#ff8c42',
+    fontWeight: 'bold',
   },
   // Modal styles
   modalContainer: {

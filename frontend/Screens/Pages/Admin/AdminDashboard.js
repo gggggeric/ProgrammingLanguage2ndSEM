@@ -5,7 +5,8 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity, 
-  ImageBackground 
+  ImageBackground,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,14 +36,26 @@ const AdminDashboard = ({ navigation }) => {
             {/* Header */}
             <Text style={styles.header}>Admin Dashboard</Text>
 
-            {/* Add Product Button */}
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => navigation.navigate('AddProduct')}
-            >
-              <Ionicons name="add" size={24} color="#fff" />
-              <Text style={styles.addButtonText}>Add Product</Text>
-            </TouchableOpacity>
+            {/* Action Buttons Container */}
+            <View style={styles.buttonsContainer}>
+              {/* Add Product Button */}
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: '#ff8c42' }]}
+                onPress={() => navigation.navigate('AddProduct')}
+              >
+                <Ionicons name="add" size={24} color="#fff" />
+                <Text style={styles.actionButtonText}>Add Product</Text>
+              </TouchableOpacity>
+
+              {/* Accept Orders Button */}
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
+                onPress={() => navigation.navigate('Admin Order')}
+              >
+                <Ionicons name="list" size={24} color="#fff" />
+                <Text style={styles.actionButtonText}>Manage Orders</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Example Product Card (Static) */}
             <View style={styles.productCard}>
@@ -113,16 +126,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-  addButton: {
+  buttonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 10,
+  },
+  actionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ff8c42',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 20,
   },
-  addButtonText: {
+  actionButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
