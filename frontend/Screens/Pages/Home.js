@@ -37,9 +37,17 @@ export default function HomeScreen() {
   const [minPrice, setMinPrice] = useState(0);
   const [maxPrice, setMaxPrice] = useState(1000);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
+  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigation = useNavigation();
   const sidebarAnimation = useRef(new Animated.Value(-250)).current;
+
+  // Food categories from the database schema
+  const foodCategories = [
+    { id: 1, name: 'vegetarian', icon: 'leaf' },
+    { id: 2, name: 'non-vegetarian', icon: 'restaurant' },
+  ];
 
   // Animate sidebar
   useEffect(() => {
@@ -96,20 +104,22 @@ export default function HomeScreen() {
     fetchProducts();
   }, []);
 
-  // Filter products based on search, description and price range
+  // Filter products based on search, description, price range, and category
   useEffect(() => {
-    if (searchQuery) {
+    if (searchQuery || selectedCategory) {
       const results = products.filter(product => {
-        const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        const matchesSearch = !searchQuery || 
+                            product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             product.description.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesPrice = product.price >= minPrice && product.price <= maxPrice;
-        return matchesSearch && matchesPrice;
+        const matchesCategory = !selectedCategory || product.category === selectedCategory;
+        return matchesSearch && matchesPrice && matchesCategory;
       });
       setFilteredProducts(results);
     } else {
       setFilteredProducts([]);
     }
-  }, [searchQuery, products, minPrice, maxPrice]);
+  }, [searchQuery, products, minPrice, maxPrice, selectedCategory]);
 
   const fetchProducts = async () => {
     try {
@@ -156,29 +166,72 @@ export default function HomeScreen() {
   };
 
   const handleSearch = async () => {
-    if (searchQuery.trim() && user?._id) {
+    const searchParams = [];
+    if (searchQuery.trim()) searchParams.push(searchQuery);
+    if (selectedCategory) searchParams.push(`Category: ${selectedCategory}`);
+    if (minPrice > 0 || maxPrice < 1000) searchParams.push(`Price: ₱${minPrice}-₱${maxPrice}`);
+    
+    const searchTerm = searchParams.join(' | ');
+    
+    if ((searchQuery.trim() || selectedCategory) && user?._id) {
       const userId = user._id;
       const searchKey = `recentSearches_${userId}`;
-      const updatedSearches = [
-        `${searchQuery} ($${minPrice}-$${maxPrice})`,
-        ...recentSearches.filter(item => !item.startsWith(searchQuery)).slice(0, 4)
-      ];
-      setRecentSearches(updatedSearches);
-      await SecureStore.setItemAsync(searchKey, JSON.stringify(updatedSearches));
+      
+      // Only add to recent searches if we have a term
+      if (searchTerm) {
+        const updatedSearches = [
+          searchTerm,
+          ...recentSearches.filter(item => item !== searchTerm).slice(0, 4)
+        ];
+        setRecentSearches(updatedSearches);
+        await SecureStore.setItemAsync(searchKey, JSON.stringify(updatedSearches));
+      }
       
       navigation.navigate('SearchResults', { 
         query: searchQuery,
         minPrice,
-        maxPrice
+        maxPrice,
+        category: selectedCategory
       });
       setSearchModalVisible(false);
       setSearchQuery('');
+      setSelectedCategory(null);
     }
   };
 
   const handleRecentSearchPress = (searchTerm) => {
-    const term = searchTerm.split(' (')[0];
-    setSearchQuery(term);
+    // Parse the search term to extract components
+    setSearchQuery('');
+    setSelectedCategory(null);
+    
+    // Extract query
+    if (!searchTerm.includes(' | ')) {
+      setSearchQuery(searchTerm);
+      return;
+    }
+    
+    const parts = searchTerm.split(' | ');
+    
+    // First part is usually the search query unless it starts with "Category:" or "Price:"
+    if (!parts[0].startsWith('Category:') && !parts[0].startsWith('Price:')) {
+      setSearchQuery(parts[0]);
+    }
+    
+    // Look for category
+    const categoryPart = parts.find(part => part.startsWith('Category:'));
+    if (categoryPart) {
+      const category = categoryPart.split(': ')[1];
+      setSelectedCategory(category);
+    }
+    
+    // Look for price range
+    const pricePart = parts.find(part => part.startsWith('Price:'));
+    if (pricePart) {
+      const priceRange = pricePart.split(': ')[1];
+      const [min, max] = priceRange.replace('₱', '').split('-₱').map(Number);
+      setMinPrice(min);
+      setMaxPrice(max);
+    }
   };
 
   const handleLogout = async () => {
@@ -193,6 +246,10 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Logout error:', error);
     }
+  };
+
+  const handleCategorySelect = (category) => {
+    setSelectedCategory(category === selectedCategory ? null : category);
   };
 
   const renderStars = (rating) => {
@@ -240,77 +297,96 @@ export default function HomeScreen() {
     </View>
   );
 
-  const categories = [
-    { id: 1, name: 'Electronics', icon: 'phone-portrait' },
-    { id: 2, name: 'Home', icon: 'home' },
-    { id: 3, name: 'Fashion', icon: 'shirt' },
-    { id: 4, name: 'Sports', icon: 'football' },
-    { id: 5, name: 'Beauty', icon: 'color-palette' },
-  ];
+  const CategoryFilter = () => (
+    <View style={styles.categoryFilterContainer}>
+      <View style={styles.categoryButtonsContainer}>
+        {foodCategories.map((category) => (
+          <TouchableOpacity
+            key={`filter-${category.id}`}
+            style={[
+              styles.categoryFilterButton,
+              selectedCategory === category.name && styles.categoryFilterButtonSelected
+            ]}
+            onPress={() => handleCategorySelect(category.name)}
+          >
+            <Ionicons 
+              name={category.icon} 
+              size={18} 
+              color={selectedCategory === category.name ? "#fff" : "#ff8c42"} 
+            />
+            <Text 
+              style={[
+                styles.categoryFilterText,
+                selectedCategory === category.name && styles.categoryFilterTextSelected
+              ]}
+            >
+              {category.name.charAt(0).toUpperCase() + category.name.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {selectedCategory && (
+        <TouchableOpacity 
+          style={styles.clearFilterButton}
+          onPress={() => setSelectedCategory(null)}
+        >
+          <Text style={styles.clearFilterText}>Clear filter</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-{/* Sidebar */}
-<Animated.View style={[styles.sidebar, {
-  transform: [{ translateX: sidebarAnimation }]
-}]}>
-  <View style={styles.sidebarHeader}>
-    <Text style={styles.sidebarTitle}>Menu</Text>
-    <TouchableOpacity onPress={() => setSidebarOpen(false)}>
-      <Ionicons name="close" size={24} color="#fff" />
-    </TouchableOpacity>
-  </View>
-  
-  <TouchableOpacity 
-    style={styles.sidebarItem}
-    onPress={() => {
-      setSidebarOpen(false);
-      navigation.navigate('Profile');
-    }}
-  >
-    <Ionicons name="person" size={20} color="#ff8c42" />
-    <Text style={styles.sidebarItemText}>Profile</Text>
-  </TouchableOpacity>
+      {/* Sidebar */}
+      <Animated.View style={[styles.sidebar, {
+        transform: [{ translateX: sidebarAnimation }]
+      }]}>
+        <View style={styles.sidebarHeader}>
+          <Text style={styles.sidebarTitle}>Menu</Text>
+          <TouchableOpacity onPress={() => setSidebarOpen(false)}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.sidebarItem}
+          onPress={() => {
+            setSidebarOpen(false);
+            navigation.navigate('Profile');
+          }}
+        >
+          <Ionicons name="person" size={20} color="#ff8c42" />
+          <Text style={styles.sidebarItemText}>Profile</Text>
+        </TouchableOpacity>
 
-  {/* Order History Tab */}
-  <TouchableOpacity 
-    style={styles.sidebarItem}
-    onPress={() => {
-      setSidebarOpen(false);
-      navigation.navigate('Order History');
-    }}
-  >
-    <Ionicons name="time" size={20} color="#ff8c42" />
-    <Text style={styles.sidebarItemText}>History</Text>
-  </TouchableOpacity>
+        {/* Order History Tab */}
+        <TouchableOpacity 
+          style={styles.sidebarItem}
+          onPress={() => {
+            setSidebarOpen(false);
+            navigation.navigate('Order History');
+          }}
+        >
+          <Ionicons name="time" size={20} color="#ff8c42" />
+          <Text style={styles.sidebarItemText}>History</Text>
+        </TouchableOpacity>
 
-  {/* Review History Tab */}
-  <TouchableOpacity 
-    style={styles.sidebarItem}
-    onPress={() => {
-      setSidebarOpen(false);
-      navigation.navigate('ReviewHistory');
-    }}
-  >
-    <Ionicons name="document-text" size={20} color="#ff8c42" />
-    <Text style={styles.sidebarItemText}>Reviews</Text>
-  </TouchableOpacity>
-
-  {/* 
-  <TouchableOpacity 
-    style={styles.sidebarItem}
-    onPress={() => {
-      setSidebarOpen(false);
-      handleLogout();
-    }}
-  >
-    <Ionicons name="log-out" size={20} color="#ff8c42" />
-    <Text style={styles.sidebarItemText}>Logout</Text>
-  </TouchableOpacity> 
-  */}
-</Animated.View>
+        {/* Review History Tab */}
+        <TouchableOpacity 
+          style={styles.sidebarItem}
+          onPress={() => {
+            setSidebarOpen(false);
+            navigation.navigate('ReviewHistory');
+          }}
+        >
+          <Ionicons name="document-text" size={20} color="#ff8c42" />
+          <Text style={styles.sidebarItemText}>Reviews</Text>
+        </TouchableOpacity>
+      </Animated.View>
+      
       {/* Overlay when sidebar is open */}
       {sidebarOpen && (
         <TouchableOpacity
@@ -399,11 +475,11 @@ export default function HomeScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* Categories */}
+            {/* Food Categories - UPDATED SECTION */}
             <View style={styles.categoriesSection}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Categories</Text>
-                <TouchableOpacity>
+                <Text style={styles.sectionTitle}>Food Categories</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Categories')}>
                   <Text style={styles.seeAllText}>See All</Text>
                 </TouchableOpacity>
               </View>
@@ -412,12 +488,24 @@ export default function HomeScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.categoriesContainer}
               >
-                {categories.map((category) => (
-                  <TouchableOpacity key={`category-${category.id}`} style={styles.categoryItem}>
-                    <View style={styles.categoryIconContainer}>
+                {foodCategories.map((category) => (
+                  <TouchableOpacity 
+                    key={`category-${category.id}`} 
+                    style={styles.categoryItem}
+                    onPress={() => {
+                      setSelectedCategory(category.name);
+                      setSearchModalVisible(true);
+                    }}
+                  >
+                    <LinearGradient
+                      colors={['rgba(255, 140, 66, 0.2)', 'rgba(255, 94, 98, 0.2)']}
+                      style={styles.categoryIconContainer}
+                    >
                       <Ionicons name={category.icon} size={24} color="#ff8c42" />
-                    </View>
-                    <Text style={styles.categoryName}>{category.name}</Text>
+                    </LinearGradient>
+                    <Text style={styles.categoryName}>
+                      {category.name.charAt(0).toUpperCase() + category.name.slice(1)}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -449,6 +537,16 @@ export default function HomeScreen() {
                         {product.badge && (
                           <View style={styles.badgeContainer}>
                             <Text style={styles.badgeText}>{product.badge}</Text>
+                          </View>
+                        )}
+                        {product.category && (
+                          <View style={[styles.categoryBadge, 
+                            { backgroundColor: product.category === 'vegetarian' ? '#4CAF50' : '#FF5722' }]}>
+                            <Ionicons 
+                              name={product.category === 'vegetarian' ? 'leaf' : 'restaurant'} 
+                              size={12} 
+                              color="#fff" 
+                            />
                           </View>
                         )}
                         <TouchableOpacity style={styles.favoriteButton}>
@@ -485,7 +583,10 @@ export default function HomeScreen() {
           style={styles.searchModalContainer}
         >
           <View style={styles.searchHeader}>
-            <TouchableOpacity onPress={() => setSearchModalVisible(false)}>
+            <TouchableOpacity onPress={() => {
+              setSearchModalVisible(false);
+              setSelectedCategory(null);
+            }}>
               <Ionicons name="arrow-back" size={24} color="#ff8c42" />
             </TouchableOpacity>
             <TextInput
@@ -506,27 +607,56 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* Price Range Filter */}
+          {/* Filter Section */}
+          <View style={styles.filterSection}>
+            {/* Category Filter */}
+            <TouchableOpacity 
+              style={styles.filterButton}
+              onPress={() => setShowCategoryFilter(!showCategoryFilter)}
+            >
+              <Text style={styles.filterButtonText}>
+                Category {selectedCategory ? `(${selectedCategory})` : ''}
+              </Text>
+              <Ionicons 
+                name={showCategoryFilter ? 'chevron-up' : 'chevron-down'} 
+                size={16} 
+                color="#ff8c42" 
+              />
+            </TouchableOpacity>
+            
+            {showCategoryFilter && <CategoryFilter />}
+
+            {/* Price Range Filter */}
+            <TouchableOpacity 
+              style={styles.filterButton}
+              onPress={() => setShowPriceFilter(!showPriceFilter)}
+            >
+              <Text style={styles.filterButtonText}>
+                Price Range: ₱{minPrice} - ₱{maxPrice}
+              </Text>
+              <Ionicons 
+                name={showPriceFilter ? 'chevron-up' : 'chevron-down'} 
+                size={16} 
+                color="#ff8c42" 
+              />
+            </TouchableOpacity>
+
+            {showPriceFilter && <PriceRangeSlider />}
+          </View>
+
+          {/* Search Button */}
           <TouchableOpacity 
-            style={styles.priceFilterButton}
-            onPress={() => setShowPriceFilter(!showPriceFilter)}
+            style={styles.searchActionButton}
+            onPress={handleSearch}
           >
-            <Text style={styles.priceFilterButtonText}>
-              Price Range: ₱{minPrice} - ₱{maxPrice}
-            </Text>
-            <Ionicons 
-              name={showPriceFilter ? 'chevron-up' : 'chevron-down'} 
-              size={16} 
-              color="#ff8c42" 
-            />
+            <Text style={styles.searchActionButtonText}>Search</Text>
+            <Ionicons name="search" size={18} color="#fff" />
           </TouchableOpacity>
 
-          {showPriceFilter && <PriceRangeSlider />}
-
-          {searchQuery ? (
+          {searchQuery || selectedCategory ? (
             <FlatList
               data={filteredProducts}
-              keyExtractor={(item) => item._id}
+              keyExtractor={(item) => item._id || Math.random().toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity 
                   style={styles.searchResultItem}
@@ -541,7 +671,17 @@ export default function HomeScreen() {
                   />
                   <View style={styles.searchResultInfo}>
                     <Text style={styles.searchResultName}>{item.name}</Text>
-                    <Text style={styles.searchResultPrice}>₱{item.price}</Text>
+                    <View style={styles.searchResultMeta}>
+                      <Text style={styles.searchResultPrice}>₱{item.price}</Text>
+                      {item.category && (
+                        <View style={[styles.searchResultCategory, 
+                          { backgroundColor: item.category === 'vegetarian' ? '#4CAF50' : '#FF5722' }]}>
+                          <Text style={styles.searchResultCategoryText}>
+                            {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.searchResultDescription} numberOfLines={2}>
                       {item.description}
                     </Text>
@@ -572,12 +712,7 @@ export default function HomeScreen() {
                       onPress={() => handleRecentSearchPress(item)}
                     >
                       <Ionicons name="time" size={20} color="#ff8c42" />
-                      <Text style={styles.recentSearchText}>{item.split(' (')[0]}</Text>
-                      {item.includes('$') && (
-                        <Text style={styles.recentSearchPriceRange}>
-                          {item.match(/\$(\d+)-(\d+)/)[0]}
-                        </Text>
-                      )}
+                      <Text style={styles.recentSearchText}>{item}</Text>
                     </TouchableOpacity>
                   )}
                 />
@@ -613,7 +748,25 @@ export default function HomeScreen() {
                 <Text style={styles.modalProductName}>{selectedProduct.name}</Text>
                 <Text style={styles.modalProductDescription}>{selectedProduct.description}</Text>
                 <Text style={styles.modalProductPrice}>Price: ₱{selectedProduct.price}</Text>
-                <Text style={styles.modalProductCategory}>Category: {selectedProduct.category}</Text>
+                
+                {selectedProduct.category && (
+                  <View style={styles.modalCategoryContainer}>
+                    <Text style={styles.modalCategoryLabel}>Category: </Text>
+                    <View style={[styles.modalCategoryBadge, 
+                      { backgroundColor: selectedProduct.category === 'vegetarian' ? '#4CAF50' : '#FF5722' }]}>
+                      <Ionicons 
+                        name={selectedProduct.category === 'vegetarian' ? 'leaf' : 'restaurant'} 
+                        size={16} 
+                        color="#fff" 
+                        style={styles.modalCategoryIcon}
+                      />
+                      <Text style={styles.modalCategoryText}>
+                        {selectedProduct.category.charAt(0).toUpperCase() + selectedProduct.category.slice(1)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                
                 <TouchableOpacity
                   style={styles.closeButton}
                   onPress={() => setModalVisible(false)}
@@ -664,70 +817,56 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   profilePhotoContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#333',
     position: 'relative',
+    marginRight: 10,
+  },
+  profilePhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: '#ff8c42',
   },
-  profilePhoto: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-  },
   editIcon: {
     position: 'absolute',
-    bottom: -5,
     right: -5,
+    bottom: -5,
     backgroundColor: '#ff8c42',
     borderRadius: 10,
     width: 20,
     height: 20,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   profileInfo: {
-    marginLeft: 12,
+    flex: 1,
   },
   welcomeText: {
-    fontSize: 12,
     color: '#aaa',
+    fontSize: 12,
   },
   profileName: {
-    fontSize: 16,
-    fontWeight: 'bold',
     color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   searchButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+    padding: 10,
   },
   notificationButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: 10,
     position: 'relative',
   },
   notificationBadge: {
     position: 'absolute',
     top: 5,
     right: 5,
-    backgroundColor: '#ff5e62',
-    borderRadius: 10,
-    width: 18,
-    height: 18,
-    justifyContent: 'center',
+    backgroundColor: '#ff8c42',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   notificationCount: {
     color: '#fff',
@@ -735,10 +874,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   banner: {
-    height: 150,
     borderRadius: 15,
     overflow: 'hidden',
-    marginBottom: 25,
+    marginBottom: 20,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -746,55 +884,55 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   bannerGradient: {
-    flex: 1,
+    borderRadius: 15,
     padding: 15,
   },
   bannerContent: {
-    flex: 1,
     flexDirection: 'row',
+    alignItems: 'center',
   },
   bannerTextContainer: {
-    flex: 3,
-    justifyContent: 'center',
+    flex: 2,
   },
   bannerSmallText: {
     color: '#fff',
     fontSize: 14,
     opacity: 0.8,
+    marginBottom: 5,
   },
   bannerLargeText: {
     color: '#fff',
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
-    marginVertical: 5,
+    marginBottom: 5,
   },
   bannerDescription: {
     color: '#fff',
     fontSize: 14,
-    opacity: 0.9,
-    marginBottom: 10,
+    marginBottom: 15,
   },
   bannerButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.3)',
     paddingHorizontal: 15,
+    paddingVertical: 8,
     borderRadius: 20,
     alignSelf: 'flex-start',
   },
   bannerButtonText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 12,
   },
   bannerImageContainer: {
-    flex: 2,
-    justifyContent: 'center',
+    flex: 1,
     alignItems: 'center',
   },
   bannerImage: {
     width: 80,
     height: 80,
-    resizeMode: 'contain',
+    borderRadius: 10,
+  },
+  categoriesSection: {
+    marginBottom: 20,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -803,19 +941,16 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   sectionTitle: {
+    color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
   },
   seeAllText: {
-    fontSize: 14,
     color: '#ff8c42',
-  },
-  categoriesSection: {
-    marginBottom: 25,
+    fontSize: 14,
   },
   categoriesContainer: {
-    paddingRight: 20,
+    paddingVertical: 10,
   },
   categoryItem: {
     alignItems: 'center',
@@ -825,9 +960,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'rgba(255, 140, 66, 0.1)',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
   },
   categoryName: {
@@ -835,7 +969,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   productsSection: {
-    marginBottom: 25,
+    marginBottom: 20,
   },
   productGrid: {
     flexDirection: 'row',
@@ -844,17 +978,14 @@ const styles = StyleSheet.create({
   },
   productCard: {
     width: '48%',
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 12,
-    marginBottom: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    marginBottom: 15,
   },
   productImageContainer: {
-    width: '100%',
-    height: 120,
     position: 'relative',
+    height: 130,
   },
   productImage: {
     width: '100%',
@@ -866,7 +997,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     left: 10,
-    backgroundColor: '#ff5e62',
+    backgroundColor: '#ff8c42',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
@@ -876,28 +1007,34 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
-  favoriteButton: {
+  categoryBadge: {
     position: 'absolute',
     top: 10,
     right: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    width: 30,
-    height: 30,
+    padding: 5,
     borderRadius: 15,
-    justifyContent: 'center',
+    width: 24,
+    height: 24,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 8,
+    borderRadius: 20,
   },
   productInfo: {
     padding: 10,
   },
   productName: {
-    fontSize: 14,
-    fontWeight: 'bold',
     color: '#fff',
+    fontWeight: 'bold',
     marginBottom: 5,
   },
   productPrice: {
-    fontSize: 16,
     color: '#ff8c42',
     fontWeight: 'bold',
     marginBottom: 5,
@@ -907,113 +1044,135 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ratingText: {
-    color: '#FFD700',
+    color: '#fff',
     fontSize: 12,
-    marginLeft: 4,
+    marginLeft: 5,
   },
   addToCartButton: {
     backgroundColor: '#ff8c42',
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
+    justifyContent: 'center',
+    padding: 8,
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
   },
   addToCartText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 12,
     marginLeft: 5,
   },
-  // Modal Styles
   modalContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
   },
   modalContent: {
-    width: '90%',
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    width: '80%',
+    backgroundColor: '#222',
+    borderRadius: 15,
     padding: 20,
+    alignItems: 'center',
   },
   modalProductImage: {
-    width: '100%',
+    width: 200,
     height: 200,
     borderRadius: 10,
-    marginBottom: 10,
+    marginBottom: 15,
   },
   modalProductName: {
+    color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 10,
+    textAlign: 'center',
   },
   modalProductDescription: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 10,
+    color: '#ddd',
+    fontSize: 14,
+    marginBottom: 15,
+    textAlign: 'center',
   },
   modalProductPrice: {
+    color: '#ff8c42',
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#ff8c42',
-    marginBottom: 10,
+    marginBottom: 15,
   },
-  modalProductCategory: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 10,
+  modalCategoryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalCategoryLabel: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  modalCategoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  modalCategoryIcon: {
+    marginRight: 5,
+  },
+  modalCategoryText: {
+    color: '#fff',
+    fontSize: 12,
   },
   closeButton: {
     backgroundColor: '#ff8c42',
-    padding: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 10,
   },
   closeButtonText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 16,
   },
-  // Search Modal Styles
   searchModalContainer: {
     flex: 1,
-    paddingTop: 50,
+    padding: 20,
+    paddingTop: 40,
   },
   searchHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    marginBottom: 20,
   },
   searchInput: {
     flex: 1,
-    height: 40,
-    marginHorizontal: 10,
-    paddingHorizontal: 15,
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 20,
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginHorizontal: 10,
     color: '#fff',
   },
-  priceFilterButton: {
+  filterSection: {
+    marginBottom: 20,
+  },
+  filterButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10,
   },
-  priceFilterButtonText: {
-    color: '#ff8c42',
-    fontSize: 14,
+  filterButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   priceRangeContainer: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
     padding: 15,
-    backgroundColor: 'rgba(30,30,30,0.8)',
+    borderRadius: 10,
+    marginBottom: 15,
   },
   priceRangeLabels: {
     flexDirection: 'row',
@@ -1022,143 +1181,196 @@ const styles = StyleSheet.create({
   },
   priceRangeLabel: {
     color: '#fff',
-    fontSize: 12,
   },
   priceSlider: {
     width: '100%',
     height: 40,
   },
-  searchResultsContainer: {
+  categoryFilterContainer: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
     padding: 15,
+    borderRadius: 10,
+    marginBottom: 15,
+  },
+  categoryButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  categoryFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    padding: 10,
+    borderRadius: 20,
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  categoryFilterButtonSelected: {
+    backgroundColor: '#ff8c42',
+  },
+  categoryFilterText: {
+    color: '#fff',
+    marginLeft: 5,
+  },
+  categoryFilterTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  clearFilterButton: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
+  clearFilterText: {
+    color: '#ff8c42',
+    fontWeight: 'bold',
+  },
+  searchActionButton: {
+    backgroundColor: '#ff8c42',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  searchActionButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginRight: 10,
+  },
+  searchResultsContainer: {
+    paddingBottom: 20,
   },
   searchResultItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
   },
   searchResultImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 10,
-    marginRight: 15,
-    backgroundColor: '#333',
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginRight: 10,
   },
   searchResultInfo: {
     flex: 1,
   },
   searchResultName: {
-    fontSize: 16,
-    fontWeight: '500',
     color: '#fff',
-    marginBottom: 5,
-  },
-  searchResultPrice: {
-    fontSize: 14,
-    color: '#ff8c42',
+    fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 5,
   },
+  searchResultMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  searchResultPrice: {
+    color: '#ff8c42',
+    fontWeight: 'bold',
+    marginRight: 10,
+  },
+  searchResultCategory: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  searchResultCategoryText: {
+    color: '#fff',
+    fontSize: 10,
+  },
   searchResultDescription: {
-    fontSize: 12,
     color: '#aaa',
+    fontSize: 12,
   },
   noResultsContainer: {
     alignItems: 'center',
-    paddingTop: 50,
+    justifyContent: 'center',
+    padding: 40,
   },
   noResultsText: {
-    color: '#ff8c42',
+    color: '#fff',
     fontSize: 18,
+    fontWeight: 'bold',
     marginTop: 10,
   },
   noResultsSubText: {
     color: '#aaa',
-    fontSize: 14,
+    textAlign: 'center',
     marginTop: 5,
   },
   recentSearchesContainer: {
-    padding: 15,
+    flex: 1,
   },
   recentSearchesTitle: {
-    fontSize: 16,
+    color: '#fff',
+    fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 15,
-    color: '#ff8c42',
   },
   recentSearchItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
   },
   recentSearchText: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
     color: '#fff',
-  },
-  recentSearchPriceRange: {
-    color: '#ff8c42',
-    fontSize: 12,
     marginLeft: 10,
   },
   noRecentSearchesContainer: {
     alignItems: 'center',
-    paddingTop: 50,
+    justifyContent: 'center',
+    padding: 40,
   },
   noRecentSearches: {
-    color: '#ff8c42',
-    fontSize: 18,
+    color: '#fff',
+    fontSize: 16,
     marginTop: 10,
   },
-  // Sidebar Styles
   sidebar: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
     width: 250,
+    height: '100%',
     backgroundColor: '#111',
-    zIndex: 100,
+    zIndex: 2,
+    padding: 20,
     paddingTop: 50,
-    paddingHorizontal: 20,
   },
   sidebarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 30,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
   },
   sidebarTitle: {
+    color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
   },
   sidebarItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
+    padding: 15,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
+    marginBottom: 10,
   },
   sidebarItemText: {
     color: '#fff',
-    fontSize: 16,
     marginLeft: 15,
+    fontSize: 16,
   },
   overlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 99,
-  },
-});
+    zIndex: 1,
+  }
+  });

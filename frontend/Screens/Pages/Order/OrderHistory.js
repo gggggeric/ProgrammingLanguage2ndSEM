@@ -600,12 +600,13 @@ const OrderHistoryScreen = ({ navigation }) => {
               />
             }
           >
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={24} color="#ff8c42" />
-            </TouchableOpacity>
+         <TouchableOpacity 
+  style={styles.backButton}
+  onPress={() => navigation.navigate('Home')}
+>
+  <Ionicons name="arrow-back" size={24} color="#ff8c42" />
+</TouchableOpacity>
+
 
             <View style={styles.headerContainer}>
               <Title style={styles.header}>Order History</Title>

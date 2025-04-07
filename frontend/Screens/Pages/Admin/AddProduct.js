@@ -14,7 +14,7 @@ import {
   FlatList,
   Image
 } from 'react-native';
-import { Button, Title } from 'react-native-paper';
+import { Button, Title, RadioButton } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -176,6 +176,7 @@ const ProductManagement = ({ navigation }) => {
             <Image source={{ uri: item.photo }} style={styles.productImage} />
             <View style={styles.productDetails}>
                 <Text style={styles.productName}>{item.name}</Text>
+                <Text style={styles.productCategory}>{item.category}</Text>
                 <Text style={styles.productPrice}>${item.price} • Qty: {item.quantity}</Text>
                 <View style={styles.productActions}>
                     <TouchableOpacity 
@@ -271,6 +272,32 @@ const ProductManagement = ({ navigation }) => {
                                         onChangeText={(text) => handleInputChange('price', text)}
                                         keyboardType="numeric"
                                     />
+                                </View>
+
+                                <Text style={styles.inputLabel}>Category</Text>
+                                <View style={styles.categoryContainer}>
+                                    <Ionicons name="restaurant-outline" size={20} color="#999" style={styles.categoryIcon} />
+                                    <View style={styles.radioContainer}>
+                                        <TouchableOpacity 
+                                            style={styles.radioOption}
+                                            onPress={() => handleInputChange('category', 'vegetarian')}
+                                        >
+                                            <View style={styles.radioCircle}>
+                                                {productData.category === 'vegetarian' && <View style={styles.selectedRb} />}
+                                            </View>
+                                            <Text style={styles.radioText}>Vegetarian</Text>
+                                        </TouchableOpacity>
+                                        
+                                        <TouchableOpacity 
+                                            style={styles.radioOption}
+                                            onPress={() => handleInputChange('category', 'non-vegetarian')}
+                                        >
+                                            <View style={styles.radioCircle}>
+                                                {productData.category === 'non-vegetarian' && <View style={styles.selectedRb} />}
+                                            </View>
+                                            <Text style={styles.radioText}>Non-Vegetarian</Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
 
                                 <Text style={styles.inputLabel}>Quantity</Text>
@@ -411,6 +438,49 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255, 140, 66, 0.3)',
     },
+    categoryContainer: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(30, 30, 30, 0.8)',
+        borderRadius: 8,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 140, 66, 0.3)',
+        paddingVertical: 10,
+    },
+    categoryIcon: {
+        padding: 10,
+    },
+    radioContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingRight: 12,
+    },
+    radioOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 24,
+    },
+    radioCircle: {
+        height: 20,
+        width: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#ff8c42',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+    },
+    selectedRb: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#ff8c42',
+    },
+    radioText: {
+        color: '#e0e0e0',
+        fontSize: 15,
+    },
     inputIcon: {
         padding: 10,
     },
@@ -510,7 +580,13 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontWeight: 'bold',
         fontSize: 16,
+        marginBottom: 2,
+    },
+    productCategory: {
+        color: '#ff8c42',
+        fontSize: 12,
         marginBottom: 5,
+        textTransform: 'capitalize',
     },
     productPrice: {
         color: '#ccc',
