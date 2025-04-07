@@ -75,7 +75,7 @@ const AdminOrdersScreen = ({ navigation }) => {
       const token = await SecureStore.getItemAsync('authToken');
       
       await axios.put(
-        `${API_BASE_URL}/orders/${selectedOrder.orderId}`,
+        `${API_BASE_URL}/admin/products/ordersUpdate/${selectedOrder.orderId}`,
         { status: selectedStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -134,10 +134,10 @@ const AdminOrdersScreen = ({ navigation }) => {
           />
           <View style={styles.productInfo}>
             <Text style={styles.productName}>{orderItem.name || item.productDetails.productName}</Text>
-            <Text style={styles.productQuantity}>${orderItem.priceAtOrder} × {orderItem.quantity}</Text>
+            <Text style={styles.productQuantity}>₱{orderItem.priceAtOrder} × {orderItem.quantity}</Text>
           </View>
           <Text style={styles.productTotal}>
-            ${(orderItem.priceAtOrder * orderItem.quantity).toFixed(2)}
+          ₱{(orderItem.priceAtOrder * orderItem.quantity).toFixed(2)}
           </Text>
         </View>
       ))}
@@ -147,7 +147,7 @@ const AdminOrdersScreen = ({ navigation }) => {
           <Ionicons name="calendar-outline" size={14} color="#999" /> {new Date(item.createdAt).toLocaleDateString()}
         </Text>
         <Text style={styles.orderTotal}>
-          Total: ${item.totalAmount.toFixed(2)}
+          Total: ₱{item.totalAmount.toFixed(2)}
         </Text>
       </View>
     </View>

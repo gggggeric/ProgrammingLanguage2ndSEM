@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Modal,
   TextInput,
   FlatList,
+  Animated,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,7 +37,18 @@ export default function HomeScreen() {
   const [minPrice, setMinPrice] = useState(0);
   const [maxPrice, setMaxPrice] = useState(1000);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigation = useNavigation();
+  const sidebarAnimation = useRef(new Animated.Value(-250)).current;
+
+  // Animate sidebar
+  useEffect(() => {
+    Animated.timing(sidebarAnimation, {
+      toValue: sidebarOpen ? 0 : -250,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [sidebarOpen]);
 
   // Get max price from products
   useEffect(() => {
@@ -169,6 +181,20 @@ export default function HomeScreen() {
     setSearchQuery(term);
   };
 
+  const handleLogout = async () => {
+    try {
+      // Clear secure store items
+      await SecureStore.deleteItemAsync('userId');
+      await SecureStore.deleteItemAsync('cartItemCount');
+      await SecureStore.deleteItemAsync(`cart_${await SecureStore.getItemAsync('userId')}`);
+      
+      // Navigate to login screen
+      navigation.navigate('Login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
   const renderStars = (rating) => {
     const stars = [];
     const fullStars = Math.floor(rating);
@@ -225,6 +251,75 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
+      
+{/* Sidebar */}
+<Animated.View style={[styles.sidebar, {
+  transform: [{ translateX: sidebarAnimation }]
+}]}>
+  <View style={styles.sidebarHeader}>
+    <Text style={styles.sidebarTitle}>Menu</Text>
+    <TouchableOpacity onPress={() => setSidebarOpen(false)}>
+      <Ionicons name="close" size={24} color="#fff" />
+    </TouchableOpacity>
+  </View>
+  
+  <TouchableOpacity 
+    style={styles.sidebarItem}
+    onPress={() => {
+      setSidebarOpen(false);
+      navigation.navigate('Profile');
+    }}
+  >
+    <Ionicons name="person" size={20} color="#ff8c42" />
+    <Text style={styles.sidebarItemText}>Profile</Text>
+  </TouchableOpacity>
+
+  {/* Order History Tab */}
+  <TouchableOpacity 
+    style={styles.sidebarItem}
+    onPress={() => {
+      setSidebarOpen(false);
+      navigation.navigate('Order History');
+    }}
+  >
+    <Ionicons name="time" size={20} color="#ff8c42" />
+    <Text style={styles.sidebarItemText}>History</Text>
+  </TouchableOpacity>
+
+  {/* Review History Tab */}
+  <TouchableOpacity 
+    style={styles.sidebarItem}
+    onPress={() => {
+      setSidebarOpen(false);
+      navigation.navigate('ReviewHistory');
+    }}
+  >
+    <Ionicons name="document-text" size={20} color="#ff8c42" />
+    <Text style={styles.sidebarItemText}>Reviews</Text>
+  </TouchableOpacity>
+
+  {/* 
+  <TouchableOpacity 
+    style={styles.sidebarItem}
+    onPress={() => {
+      setSidebarOpen(false);
+      handleLogout();
+    }}
+  >
+    <Ionicons name="log-out" size={20} color="#ff8c42" />
+    <Text style={styles.sidebarItemText}>Logout</Text>
+  </TouchableOpacity> 
+  */}
+</Animated.View>
+      {/* Overlay when sidebar is open */}
+      {sidebarOpen && (
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={() => setSidebarOpen(false)}
+        />
+      )}
+
       <ImageBackground
         source={{ uri: 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80' }}
         style={styles.backgroundImage}
@@ -243,6 +338,10 @@ export default function HomeScreen() {
           >
             {/* Header with profile and search */}
             <View style={styles.header}>
+              <TouchableOpacity onPress={() => setSidebarOpen(true)} style={styles.menuButton}>
+                <Ionicons name="menu" size={28} color="#fff" />
+              </TouchableOpacity>
+              
               <View style={styles.profileSection}>
                 <View style={styles.profilePhotoContainer}>
                   <Image
@@ -534,6 +633,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+    overflow: 'hidden',
   },
   backgroundImage: {
     flex: 1,
@@ -554,6 +654,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
+  },
+  menuButton: {
+    marginRight: 10,
   },
   profileSection: {
     flexDirection: 'row',
@@ -1010,5 +1113,52 @@ const styles = StyleSheet.create({
     color: '#ff8c42',
     fontSize: 18,
     marginTop: 10,
+  },
+  // Sidebar Styles
+  sidebar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: 250,
+    backgroundColor: '#111',
+    zIndex: 100,
+    paddingTop: 50,
+    paddingHorizontal: 20,
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 30,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  sidebarTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  sidebarItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  sidebarItemText: {
+    color: '#fff',
+    fontSize: 16,
+    marginLeft: 15,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 99,
   },
 });

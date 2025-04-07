@@ -15,6 +15,8 @@ import CartScreen from './Screens/Pages/Cart/Cart';
 import SearchScreen from './Screens/Pages/Search';
 import OrderDetailsScreen from './Screens/Pages/Order/OrderHistory';
 import AdminOrdersScreen from './Screens/Pages/Admin/Orders';
+import ReviewList from './Screens/Pages/Admin/reviews';
+import UserReviewsScreen from './Screens/Pages/Review/Review';
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -34,8 +36,18 @@ export default function App() {
             options={{ headerShown: false }}
           />
             <Stack.Screen 
+            name="Admin Review" 
+            component={ReviewList} 
+            options={{ headerShown: false }}
+          />
+            <Stack.Screen 
             name="Admin Order" 
             component={AdminOrdersScreen} 
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen 
+            name="ReviewHistory" 
+            component={UserReviewsScreen} 
             options={{ headerShown: false }}
           />
           <Stack.Screen 
@@ -90,3 +102,5 @@ export default function App() {
     </Provider>
   );
 }
+
+

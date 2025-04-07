@@ -423,14 +423,10 @@ export default function CartScreen({ navigation }) {
                 <Ionicons name="arrow-back" size={24} color="#ff8c42" />
               </TouchableOpacity>
 
-              <View style={styles.logoContainer}>
-                <View style={styles.logoCircle}>
-                  <Title style={styles.logoText}>C</Title>
-                </View>
+              <View style={styles.headerContainer}>
+                <Title style={styles.header}>Your Cart</Title>
+                <Text style={styles.subheader}>{cartItems.length} items</Text>
               </View>
-
-              <Title style={styles.header}>Your Cart</Title>
-              <Text style={styles.subheader}>{cartItems.length} items</Text>
 
               {cartItems.length > 0 ? (
                 <View style={styles.cartItemsContainer}>
@@ -573,35 +569,20 @@ const styles = StyleSheet.create({
     left: 20,
     zIndex: 1,
   },
-  logoContainer: {
-    alignItems: 'center',
-    marginTop: 50,
+  headerContainer: {
+    marginTop: 70,
     marginBottom: 20,
-  },
-  logoCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ff8c42',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoText: {
-    color: 'white',
-    fontSize: 28,
-    fontWeight: 'bold',
+    paddingHorizontal: 20,
   },
   header: {
     color: 'white',
     fontSize: 28,
     fontWeight: 'bold',
-    textAlign: 'center',
     marginBottom: 5,
   },
   subheader: {
     color: '#ccc',
-    textAlign: 'center',
-    marginBottom: 20,
+    fontSize: 16,
   },
   cartItemsContainer: {
     paddingHorizontal: 20,

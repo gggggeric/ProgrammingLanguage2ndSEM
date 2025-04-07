@@ -520,4 +520,63 @@ router.put('/ordersUpdate/:orderId', async (req, res) => {
         });
     }
 });
+
+
+
+// Add this to reviewRoutes.js
+router.get('/product-owner/:ownerId', async (req, res) => {
+    try {
+      const reviews = await Review.aggregate([
+        {
+          $lookup: {
+            from: 'orders',
+            localField: 'orderId',
+            foreignField: '_id',
+            as: 'order'
+          }
+        },
+        { $unwind: '$order' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'order.items.productId',
+            foreignField: '_id',
+            as: 'product'
+          }
+        },
+        { $unwind: '$product' },
+        {
+          $match: {
+            'product.userId': mongoose.Types.ObjectId(req.params.ownerId)
+          }
+        },
+        {
+          $project: {
+            rating: 1,
+            title: 1,
+            comment: 1,
+            photos: 1,
+            createdAt: 1,
+            'customer': '$userId',
+            'product': {
+              _id: '$product._id',
+              name: '$product.name',
+              photo: '$product.photo'
+            }
+          }
+        }
+      ]).exec();
+  
+      // Additional population if needed
+      const populatedReviews = await Review.populate(reviews, {
+        path: 'customer',
+        select: 'name profilePhoto'
+      });
+  
+      res.status(200).json({ reviews: populatedReviews });
+    } catch (error) {
+      console.error('Error fetching product owner reviews:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  });
 module.exports = router;

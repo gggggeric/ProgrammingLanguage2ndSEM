@@ -55,16 +55,10 @@ export default function BottomNavbar({ cartItemCount: propCartItemCount }) {
         </>
       ) : (
         <>
-          {/* Render User Tabs if userType is 'user' */}
+          {/* Home Tab */}
           <TouchableOpacity style={styles.tab} onPress={() => handleNavigation('Home')}>
             <Ionicons name="home" size={24} color="#ff8c42" />
             <Text style={styles.tabText}>Home</Text>
-          </TouchableOpacity>
-
-          {/* History Tab */}
-          <TouchableOpacity style={styles.tab} onPress={() => handleNavigation('Order History')}>
-            <Ionicons name="time" size={24} color="#ff8c42" />
-            <Text style={styles.tabText}>History</Text>
           </TouchableOpacity>
 
           {/* Cart Tab */}
@@ -78,12 +72,6 @@ export default function BottomNavbar({ cartItemCount: propCartItemCount }) {
               )}
             </View>
             <Text style={styles.tabText}>Cart</Text>
-          </TouchableOpacity>
-
-          {/* Account Tab */}
-          <TouchableOpacity style={styles.tab} onPress={() => handleNavigation('Profile')}>
-            <Ionicons name="person" size={24} color="#ff8c42" />
-            <Text style={styles.tabText}>Account</Text>
           </TouchableOpacity>
         </>
       )}
@@ -108,6 +96,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     alignItems: 'center',
+    flex: 1, // Equal width for all tabs
   },
   tabText: {
     color: '#fff', // White text
